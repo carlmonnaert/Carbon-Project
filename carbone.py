@@ -192,7 +192,7 @@ def plot_results(times, results):
 def main():
     t0 = 1850
     tf = 2100
-    dt = 0.1
+    dt = 1
     times, results = run_simulation(x0, t0, tf, dt)
     plot_results(times, results)
 main()
