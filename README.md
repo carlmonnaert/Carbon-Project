@@ -2,7 +2,7 @@
 
 Numerical simulation of a simplified carbon cycle using an explicit Euler integrator in Python.
 
-![Stable simulation preview](./data/plots/trajectories/stable_to_2100_dt_0_dot_1_year.png)
+![Stable simulation preview](./data/plots/trajectories/plot_atm7p5e2_rock1e8_deep3p8e4_fossil7p5e3_plant5p6e2_soil1p5e3_surf8p9e2_veg1e2_years7p5e2_dt1e-1.png)
 
 ## Overview
 
