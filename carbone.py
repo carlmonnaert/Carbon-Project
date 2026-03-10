@@ -27,7 +27,7 @@ x0 = np.array([Atmosphere_Initial,
 Alk = 2.222446077610055
 Kao = .278
 SurfOcVol = .0362
-Deforestation = 2
+Deforestation = 1.5
 
 # Labels for the state variables, used for building output paths and plot titles
 STATE_LABELS = [
@@ -190,8 +190,8 @@ def run_simulation(x0, t0, tf, dt):
 
     return times, results
 
-# Plotting function
-def plot_results(times, results, initial_state, dt, output_base_dir='./data/plots'):
+# Function to plot the results of the simulation, showing the dynamics of the carbon cycle reservoirs and related effects over time
+def plot_results(times, results, initial_state, dt, output_base_dir='./data/plots/trajectories'):
     output_dir = get_output_path(output_base_dir, initial_state)
     run_tag = build_run_tag(initial_state)
     years = times[-1] - times[0]
@@ -287,23 +287,48 @@ def plot_results(times, results, initial_state, dt, output_base_dir='./data/plot
     plt.show()
     print(f'Saved plot to: {output_path}')
 
-# Function to compare the atmospheric CO2 levels from the simulation with historical data
-def compare_with_historical_data(times, results, historical_data_path='./data/datasets/carbon_atmosphere.csv'):
+# Function to plot the comparison between the atmospheric CO2 levels from the simulation with historical data
+def compare_with_historical_data(times, results, historical_data_path='./data/datasets/carbon_atmosphere.csv', temperature_data_path='./data/datasets/global_temperature.csv'):
     historical_data = np.genfromtxt(historical_data_path, delimiter=',', skip_header=1)
     historical_years = historical_data[:, 0]
     historical_co2 = historical_data[:, 1]
+    
+    temperature_data = np.genfromtxt(temperature_data_path, delimiter=',', skip_header=1)
+    temperature_years = temperature_data[:, 0]
+    temperature_values = temperature_data[:, 1]
+    
     simulated_atm_co2 = np.array([AtmCO2(Atmosphere) for Atmosphere in results[:, 0]])
-    plt.figure(figsize=(10, 6))
-    plt.plot(times, simulated_atm_co2, label='Simulated Atmospheric CO2', color='tab:blue', linewidth=2)
-    plt.plot(historical_years, historical_co2, label='Historical Atmospheric CO2', color='tab:red', linewidth=2, linestyle='--')
-    plt.xlabel('Year')
-    plt.ylabel('Atmospheric CO2 (ppm)')
-    plt.title('Comparison of Simulated Atmospheric CO2 with Historical Data')
-    plt.legend()
-    plt.grid(alpha=0.25)
-    plt.savefig('./data/plots/atmospheric_co2_comparison.pdf', dpi=300)
+    simulated_temp = np.array([GlobalTemp(AtmCO2(Atmosphere)) for Atmosphere in results[:, 0]])
+    
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5), constrained_layout=True)
+    
+    # CO2 comparison
+    axs[0].plot(times, simulated_atm_co2, label='Simulated', color='tab:blue', linewidth=2)
+    axs[0].plot(historical_years, historical_co2, label='Historical', color='tab:red', linewidth=2, linestyle='--')
+    axs[0].set_xlabel('Year')
+    axs[0].set_ylabel('Atmospheric CO2 (ppm)')
+    axs[0].set_title('Atmospheric CO2 Comparison')
+    axs[0].legend()
+    axs[0].grid(alpha=0.25)
+    axs[0].spines['top'].set_visible(False)
+    axs[0].spines['right'].set_visible(False)
+    
+    # Temperature comparison
+    axs[1].plot(times, simulated_temp, label='Simulated', color='tab:blue', linewidth=2)
+    # Only plot temperature data within the simulation time range
+    mask = (temperature_years >= times[0]) & (temperature_years <= times[-1])
+    axs[1].plot(temperature_years[mask], temperature_values[mask], label='Historical', color='tab:red', linewidth=2, linestyle='--')
+    axs[1].set_xlabel('Year')
+    axs[1].set_ylabel('Temperature (°C)')
+    axs[1].set_title('Global Temperature Comparison')
+    axs[1].legend()
+    axs[1].grid(alpha=0.25)
+    axs[1].spines['top'].set_visible(False)
+    axs[1].spines['right'].set_visible(False)
+    
+    plt.savefig('./data/plots/comparisons/atmospheric_co2_temperature_comparison.pdf', dpi=300)
     plt.show()
-    print('Saved comparison plot to: ./data/plots/atmospheric_co2_comparison.pdf')
+    print('Saved comparison plot to: ./data/plots/comparisons/atmospheric_co2_temperature_comparison.pdf')
 
 def main():
     t0 = 1850
