@@ -41,7 +41,7 @@ STATE_LABELS = [
     'veg'
 ]
 
-
+# Helper functions for formatting values in output paths and plot titles
 def _fmt_value(value):
     if value == 0:
         return '0e0'
@@ -61,7 +61,7 @@ def get_output_path(base_dir, initial_state):
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
-# Helper functions
+# Helper functions for the carbon cycle model equations
 # @njit
 def AtmCO2(Atmosphere):
     return Atmosphere * (280/Atmosphere_Initial)
@@ -191,7 +191,7 @@ def run_simulation(x0, t0, tf, dt):
     return times, results
 
 # Plotting function
-def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
+def plot_results(times, results, initial_state, dt, output_base_dir='./data/plots'):
     output_dir = get_output_path(output_base_dir, initial_state)
     run_tag = build_run_tag(initial_state)
     years = times[-1] - times[0]
@@ -287,10 +287,29 @@ def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
     plt.show()
     print(f'Saved plot to: {output_path}')
 
+# Function to compare the atmospheric CO2 levels from the simulation with historical data
+def compare_with_historical_data(times, results, historical_data_path='./data/datasets/carbon_atmosphere.csv'):
+    historical_data = np.genfromtxt(historical_data_path, delimiter=',', skip_header=1)
+    historical_years = historical_data[:, 0]
+    historical_co2 = historical_data[:, 1]
+    simulated_atm_co2 = np.array([AtmCO2(Atmosphere) for Atmosphere in results[:, 0]])
+    plt.figure(figsize=(10, 6))
+    plt.plot(times, simulated_atm_co2, label='Simulated Atmospheric CO2', color='tab:blue', linewidth=2)
+    plt.plot(historical_years, historical_co2, label='Historical Atmospheric CO2', color='tab:red', linewidth=2, linestyle='--')
+    plt.xlabel('Year')
+    plt.ylabel('Atmospheric CO2 (ppm)')
+    plt.title('Comparison of Simulated Atmospheric CO2 with Historical Data')
+    plt.legend()
+    plt.grid(alpha=0.25)
+    plt.savefig('./data/plots/atmospheric_co2_comparison.pdf', dpi=300)
+    plt.show()
+    print('Saved comparison plot to: ./data/plots/atmospheric_co2_comparison.pdf')
+
 def main():
     t0 = 1850
-    tf = 1850 + 750
+    tf = 2015
     dt = 0.1
     times, results = run_simulation(x0, t0, tf, dt)
-    plot_results(times, results, x0, dt)
+    # plot_results(times, results, x0, dt)
+    compare_with_historical_data(times, results)
 main()
