@@ -158,7 +158,11 @@ def run_simulation(x0, t0, tf, dt):
     return times, results
 
 def plot_results(times, results):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    fig = plt.figure(figsize=(21, 10))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1])
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[1, :])
     
     # Subplot 1
     ax1.plot(times, results[:, 0]/results[:,0].max(), label='Atmosphere')
@@ -171,28 +175,44 @@ def plot_results(times, results):
     ax1.set_title('Carbon Cycle Simulation - Part 1')
     ax1.legend()
     ax1.grid()
-    
+
     # Subplot 2
-    FossilFuelsCombustion_values = np.array([FossilFuelsCombustion(t) for t in times])
-    ax2.plot(times, results[:, 1]/results[:,1].max(), label='Carbonate Rock')
-    ax2.plot(times, FossilFuelsCombustion_values/FossilFuelsCombustion_values.max(), label='Fossil Fuel Combustion')
-    ax2.plot(times, results[:, 2]/results[:,2].max(), label='Deep Ocean')
-    ax2.plot(times, results[:, 6]/results[:,6].max(), label='Surface Ocean')
-    ax2.plot(times, results[:, 7]/results[:,7].max(), label='Veg Land Area %')
+    AtmCO2_values = np.array([AtmCO2(Atmosphere) for Atmosphere in results[:, 0]])
+    TempEffect_values = np.array([TempEffect(GlobalTemp(AtmCO2)) for AtmCO2 in AtmCO2_values])
+    CO2Effect_values = np.array([CO2Effect(AtmCO2) for AtmCO2 in AtmCO2_values])
+    Photosynthesis_values = np.array([110 * CO2Effect(AtmCO2) * (VegLandArea_percent/100) * TempEffect(GlobalTemp(AtmCO2)) for AtmCO2, VegLandArea_percent in zip(AtmCO2_values, results[:, 7])])
+    GlovalTemp_values = np.array([GlobalTemp(AtmCO2) for AtmCO2 in AtmCO2_values])
+    ax2.plot(times, AtmCO2_values/AtmCO2_values.max(), label='Atmosphere CO2')
+    ax2.plot(times, TempEffect_values/TempEffect_values.max(), label='Temperature effect')
+    ax2.plot(times, CO2Effect_values/CO2Effect_values.max(), label='CO2 effect')
+    ax2.plot(times, Photosynthesis_values/Photosynthesis_values.max(), label='Photosynthesis')
+    ax2.plot(times, GlovalTemp_values/GlovalTemp_values.max(), label='Global Temperature')
     ax2.set_xlabel('Time (years)')
-    ax2.set_ylabel('Carbon (Gt) / Percentage (%)')
     ax2.set_title('Carbon Cycle Simulation - Part 2')
     ax2.legend()
     ax2.grid()
 
-    plt.savefig('./data/carbon_simulation.pdf')
+    # Subplot 3
+    FossilFuelsCombustion_values = np.array([FossilFuelsCombustion(t) for t in times])
+    ax3.plot(times, results[:, 1]/results[:,1].max(), label='Carbonate Rock')
+    ax3.plot(times, FossilFuelsCombustion_values/FossilFuelsCombustion_values.max(), label='Fossil Fuel Combustion')
+    ax3.plot(times, results[:, 2]/results[:,2].max(), label='Deep Ocean')
+    ax3.plot(times, results[:, 6]/results[:,6].max(), label='Surface Ocean')
+    ax3.plot(times, results[:, 7]/results[:,7].max(), label='Veg Land Area %')
+    ax3.set_xlabel('Time (years)')
+    ax3.set_ylabel('Carbon (Gt) / Percentage (%)')
+    ax3.set_title('Carbon Cycle Simulation - Part 3')
+    ax3.legend()
+    ax3.grid()
+
+    plt.savefig('./data/carbon_simulation_last_plot.pdf')
     plt.tight_layout()
     plt.show()
 
 def main():
     t0 = 1850
     tf = 2100
-    dt = 1
+    dt = 0.1
     times, results = run_simulation(x0, t0, tf, dt)
     plot_results(times, results)
 main()
