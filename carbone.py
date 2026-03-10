@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-# from numba import njit
+from pathlib import Path
+from numba import njit
 
 # Initial conditions
 Atmosphere_Initial = 750
@@ -28,38 +29,70 @@ Kao = .278
 SurfOcVol = .0362
 Deforestation = 0
 
+# Labels for the state variables, used for building output paths and plot titles
+STATE_LABELS = [
+    'atm',
+    'rock',
+    'deep',
+    'fossil',
+    'plant',
+    'soil',
+    'surf',
+    'veg'
+]
+
+
+def _fmt_value(value):
+    if value == 0:
+        return '0e0'
+    sci = f'{float(value):.3e}'
+    mantissa, exponent = sci.split('e')
+    mantissa = mantissa.rstrip('0').rstrip('.').replace('.', 'p')
+    exponent = str(int(exponent))
+    return f'{mantissa}e{exponent}'
+
+
+def build_run_tag(initial_state):
+    return '_'.join(f'{name}{_fmt_value(val)}' for name, val in zip(STATE_LABELS, initial_state))
+
+
+def get_output_path(base_dir, initial_state):
+    output_dir = Path(base_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
 # Helper functions
-# @njit
+@njit
 def AtmCO2(Atmosphere):
     return Atmosphere * (280/Atmosphere_Initial)
-# @njit
+@njit
 def GlobalTemp(AtmCO2):
     return 15 + ((AtmCO2-280) * .01)
-# @njit
+@njit
 def CO2Effect(AtmCO2):
     return 1.5 * ((AtmCO2) - 40) / ((AtmCO2) + 80)
-# @njit
+@njit
 def WaterTemp(GlobalTemp):
     return 273+GlobalTemp
-# @njit
+@njit
 def TempEffect(GlobalTemp):
     return ((60 - GlobalTemp) * (GlobalTemp + 15)) / (((60 + 15) / 2) ** (2))/.96
-# @njit
+@njit
 def SurfCConc(SurfaceOcean):
     return (SurfaceOcean/12000)/SurfOcVol
-# @njit
+@njit
 def Kcarb(WaterTemp):
     return .000575+(.000006*(WaterTemp-278))
-# @njit
+@njit
 def KCO2(WaterTemp):
     return .035+(.0019*(WaterTemp-278))
-# @njit
+@njit
 def HCO3(Kcarb, SurfCConc):
     return(SurfCConc-(np.sqrt(SurfCConc**2-Alk*(2*SurfCConc-Alk)*(1-4*Kcarb))))/(1-4*Kcarb)
-# @njit
+@njit
 def CO3(HCO3):
     return (Alk-HCO3)/2
-# @njit
+@njit
 def pCO2Oc(KCO2, HCO3, CO3):
     return 280*KCO2*(HCO3**2/CO3)
 
@@ -69,7 +102,7 @@ FossFuelData = np.array([[1850.0, 0.00], [1875.0, 0.30], [1900.0, 0.60], [1925.0
 # CO2 equivalent of 10.05 Gt carbon is 36.88 Gt CO2
 
 
-# @njit
+@njit
 def FossilFuelsCombustion(t):
     i = 0
     if t >= FossFuelData[-1,0]:
@@ -81,7 +114,7 @@ def FossilFuelsCombustion(t):
     else:
         return FossFuelData[i-1,1] + (t - FossFuelData[i-1,0]) / (FossFuelData[i,0] - FossFuelData[i-1,0]) * (FossFuelData[i,1] - FossFuelData[i-1,1])
 
-# @njit
+@njit
 def derivative(x, t):
     Atmosphere = x[0]
     CarbonateRock = x[1]
@@ -141,12 +174,12 @@ def derivative(x, t):
     return derivative
 
 # Perform a single step of the simulation using Euler's method
-# @njit
+@njit
 def step(x, t, dt):
     return x + derivative(x, t) * dt
 
 # Perform the simulation over a specified time range
-# @njit
+@njit
 def run_simulation(x0, t0, tf, dt):
     times = np.arange(t0, tf + dt, dt)
     results = np.zeros((len(times), len(x0)))
@@ -157,8 +190,16 @@ def run_simulation(x0, t0, tf, dt):
 
     return times, results
 
-def plot_results(times, results):
+def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
+    output_dir = get_output_path(output_base_dir, initial_state)
+    run_tag = build_run_tag(initial_state)
+    years = times[-1] - times[0]
+    dt_tag = _fmt_value(dt)
+    years_tag = _fmt_value(years)
+    filename = f'plot_{run_tag}_years{years_tag}_dt{dt_tag}.pdf'
+    output_path = output_dir / filename
     fig = plt.figure(figsize=(21, 10))
+    fig.suptitle(f'Carbon Cycle Simulation | {run_tag}', fontsize=11)
     gs = fig.add_gridspec(2, 2, height_ratios=[1, 1])
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1])
@@ -205,14 +246,15 @@ def plot_results(times, results):
     ax3.legend()
     ax3.grid()
 
-    plt.savefig('./data/carbon_simulation_last_plot.pdf')
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+    plt.savefig(output_path)
     plt.show()
+    print(f'Saved plot to: {output_path}')
 
 def main():
     t0 = 1850
     tf = 2100
-    dt = 0.1
+    dt = 1
     times, results = run_simulation(x0, t0, tf, dt)
-    plot_results(times, results)
+    plot_results(times, results, x0, dt)
 main()
