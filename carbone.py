@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from numba import njit
+# from numba import njit
 
 # Initial conditions
 Atmosphere_Initial = 750
@@ -62,37 +62,37 @@ def get_output_path(base_dir, initial_state):
     return output_dir
 
 # Helper functions
-@njit
+# @njit
 def AtmCO2(Atmosphere):
     return Atmosphere * (280/Atmosphere_Initial)
-@njit
+# @njit
 def GlobalTemp(AtmCO2):
     return 15 + ((AtmCO2-280) * .01)
-@njit
+# @njit
 def CO2Effect(AtmCO2):
     return 1.5 * ((AtmCO2) - 40) / ((AtmCO2) + 80)
-@njit
+# @njit
 def WaterTemp(GlobalTemp):
     return 273+GlobalTemp
-@njit
+# @njit
 def TempEffect(GlobalTemp):
     return ((60 - GlobalTemp) * (GlobalTemp + 15)) / (((60 + 15) / 2) ** (2))/.96
-@njit
+# @njit
 def SurfCConc(SurfaceOcean):
     return (SurfaceOcean/12000)/SurfOcVol
-@njit
+# @njit
 def Kcarb(WaterTemp):
     return .000575+(.000006*(WaterTemp-278))
-@njit
+# @njit
 def KCO2(WaterTemp):
     return .035+(.0019*(WaterTemp-278))
-@njit
+# @njit
 def HCO3(Kcarb, SurfCConc):
     return(SurfCConc-(np.sqrt(SurfCConc**2-Alk*(2*SurfCConc-Alk)*(1-4*Kcarb))))/(1-4*Kcarb)
-@njit
+# @njit
 def CO3(HCO3):
     return (Alk-HCO3)/2
-@njit
+# @njit
 def pCO2Oc(KCO2, HCO3, CO3):
     return 280*KCO2*(HCO3**2/CO3)
 
@@ -102,7 +102,7 @@ FossFuelData = np.array([[1850.0, 0.00], [1875.0, 0.30], [1900.0, 0.60], [1925.0
 # CO2 equivalent of 10.05 Gt carbon is 36.88 Gt CO2
 
 
-@njit
+# @njit
 def FossilFuelsCombustion(t):
     i = 0
     if t >= FossFuelData[-1,0]:
@@ -114,7 +114,7 @@ def FossilFuelsCombustion(t):
     else:
         return FossFuelData[i-1,1] + (t - FossFuelData[i-1,0]) / (FossFuelData[i,0] - FossFuelData[i-1,0]) * (FossFuelData[i,1] - FossFuelData[i-1,1])
 
-@njit
+# @njit
 def derivative(x, t):
     Atmosphere = x[0]
     CarbonateRock = x[1]
@@ -174,12 +174,12 @@ def derivative(x, t):
     return derivative
 
 # Perform a single step of the simulation using Euler's method
-@njit
+# @njit
 def step(x, t, dt):
     return x + derivative(x, t) * dt
 
 # Perform the simulation over a specified time range
-@njit
+# @njit
 def run_simulation(x0, t0, tf, dt):
     times = np.arange(t0, tf + dt, dt)
     results = np.zeros((len(times), len(x0)))
@@ -254,7 +254,7 @@ def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
 def main():
     t0 = 1850
     tf = 2100
-    dt = 1
+    dt = 1.0
     times, results = run_simulation(x0, t0, tf, dt)
     plot_results(times, results, x0, dt)
 main()
