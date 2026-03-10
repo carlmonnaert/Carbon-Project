@@ -19,6 +19,8 @@ This project models exchanges of carbon between 8 reservoirs:
 
 The main script (`carbone.py`) computes time evolution from 1850 to 2100 and generates normalized plots for selected variables.
 
+The current implementation runs a longer scenario by default (1850 to 2600) and exports a traceable PDF filename containing initial conditions, simulated duration, and time step.
+
 ## Repository Tree
 
 ```text
@@ -30,7 +32,7 @@ Carbon Project/
 ├── consigne.pdf
 ├── explanation.pdf
 └── data/
-    └── ...
+└── reports/
 ```
 
 ## Requirements
@@ -58,14 +60,51 @@ python3 carbone.py
 In `main()`:
 
 - Start year: `1850`
-- End year: `2100`
+- End year: `1850 + 750` (i.e. `2600`)
 - Time step: `0.1` year
+- Deforestation parameter: `2`
 
 ## Output
 
-Running the script displays the figure and also saves it to:
+Running the script displays the figure and also saves it in `./data/` with an encoded name:
 
-- `./data/carbon_simulation.pdf`
+- `./data/plot_<run_tag>_years<...>_dt<...>.pdf`
+
+Example:
+
+- `./data/plot_atm7p5e2_rock1e8_deep3p8e4_fossil7p5e3_plant5p6e2_soil1p5e3_surf8p9e2_veg1e2_years7p5e2_dt1e-1.pdf`
+
+Notes on encoding:
+
+- values are represented in scientific notation,
+- `p` replaces the decimal point for filename safety (e.g. `7p5e2` means $7.5\times10^2$).
+
+## Plotting
+
+The generated figure uses a clean 2x2 layout with 3 active panels:
+
+- top-left: reservoir dynamics,
+- top-right: climate and biosphere effects,
+- bottom-left: ocean-geology-land coupling,
+- bottom-right: intentionally blank.
+
+Normalization is applied per curve using min-max scaling:
+
+$$
+y_{norm}=\frac{y-y_{min}}{y_{max}-y_{min}}
+$$
+
+with constant series mapped to `0.5`.
+
+Each legend entry includes the original value range `[min, max]`, and legend text color matches the corresponding curve color.
+
+## Technical Report
+
+A detailed implementation report is provided in:
+
+- `report_carbon_model.tex`
+
+It includes the model equations, numerical method, and a linear/nonlinear decomposition in matrix-vector form.
 
 ## Notes
 
