@@ -27,7 +27,7 @@ x0 = np.array([Atmosphere_Initial,
 Alk = 2.222446077610055
 Kao = .278
 SurfOcVol = .0362
-Deforestation = 0
+Deforestation = 2
 
 # Labels for the state variables, used for building output paths and plot titles
 STATE_LABELS = [
@@ -190,6 +190,7 @@ def run_simulation(x0, t0, tf, dt):
 
     return times, results
 
+# Plotting function
 def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
     output_dir = get_output_path(output_base_dir, initial_state)
     run_tag = build_run_tag(initial_state)
@@ -198,24 +199,51 @@ def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
     years_tag = _fmt_value(years)
     filename = f'plot_{run_tag}_years{years_tag}_dt{dt_tag}.pdf'
     output_path = output_dir / filename
-    fig = plt.figure(figsize=(21, 10))
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, axs = plt.subplots(2, 2, figsize=(12, 9), constrained_layout=True)
+    ax1 = axs[0, 0]
+    ax2 = axs[0, 1]
+    ax3 = axs[1, 0]
+    axs[1, 1].axis('off')
     fig.suptitle(f'Carbon Cycle Simulation | {run_tag}', fontsize=11)
-    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1])
-    ax1 = fig.add_subplot(gs[0, 0])
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax3 = fig.add_subplot(gs[1, :])
+
+    def norm(series):
+        series_min = np.min(series)
+        series_max = np.max(series)
+        span = series_max - series_min
+        if span == 0:
+            return np.full_like(series, 0.5, dtype=float)
+        return (series - series_min) / span
+
+    def range_label(series):
+        return f'[{np.min(series):.3g}, {np.max(series):.3g}]'
+
+    palette = {
+        'atm': 'tab:blue',
+        'fossil': 'tab:red',
+        'deep': 'tab:purple',
+        'plants': 'tab:green',
+        'soils': 'tab:brown',
+        'co2': 'tab:cyan',
+        'temp': 'tab:orange',
+        'photo': 'tab:pink',
+        'rock': 'tab:olive',
+        'surface': 'tab:gray',
+        'veg': 'tab:green'
+    }
     
     # Subplot 1
-    ax1.plot(times, results[:, 0]/results[:,0].max(), label='Atmosphere')
-    ax1.plot(times, results[:, 3]/results[:,3].max(), label='Fossil Fuel Carbon')
-    ax1.plot(times, results[:, 2]/results[:,2].max(), label='Deep Ocean')
-    ax1.plot(times, results[:, 4]/results[:,4].max(), label='Plants')
-    ax1.plot(times, results[:, 5]/results[:,5].max(), label='Soils')
+    line = ax1.plot(times, norm(results[:, 0]), label=f'Atmosphere {range_label(results[:, 0])}', color=palette['atm'], linewidth=2)[0]
+    line = ax1.plot(times, norm(results[:, 3]), label=f'Fossil Fuel Carbon {range_label(results[:, 3])}', color=palette['fossil'], linewidth=2)[0]
+    line = ax1.plot(times, norm(results[:, 2]), label=f'Deep Ocean {range_label(results[:, 2])}', color=palette['deep'], linewidth=2)[0]
+    line = ax1.plot(times, norm(results[:, 4]), label=f'Plants {range_label(results[:, 4])}', color=palette['plants'], linewidth=2)[0]
+    line = ax1.plot(times, norm(results[:, 5]), label=f'Soils {range_label(results[:, 5])}', color=palette['soils'], linewidth=2)[0]
+    ax1.set_ylabel('Normalized (min→0, max→1)')
+    ax1.set_title('Reservoir Dynamics')
     ax1.set_xlabel('Time (years)')
-    ax1.set_ylabel('Carbon (Gt)')
-    ax1.set_title('Carbon Cycle Simulation - Part 1')
-    ax1.legend()
-    ax1.grid()
+    legend1 = ax1.legend(ncol=1, frameon=False, loc='upper left', fontsize=9)
+    for text, handle in zip(legend1.get_texts(), legend1.legend_handles):
+        text.set_color(handle.get_color())
 
     # Subplot 2
     AtmCO2_values = np.array([AtmCO2(Atmosphere) for Atmosphere in results[:, 0]])
@@ -223,38 +251,46 @@ def plot_results(times, results, initial_state, dt, output_base_dir='./data'):
     CO2Effect_values = np.array([CO2Effect(AtmCO2) for AtmCO2 in AtmCO2_values])
     Photosynthesis_values = np.array([110 * CO2Effect(AtmCO2) * (VegLandArea_percent/100) * TempEffect(GlobalTemp(AtmCO2)) for AtmCO2, VegLandArea_percent in zip(AtmCO2_values, results[:, 7])])
     GlovalTemp_values = np.array([GlobalTemp(AtmCO2) for AtmCO2 in AtmCO2_values])
-    ax2.plot(times, AtmCO2_values/AtmCO2_values.max(), label='Atmosphere CO2')
-    ax2.plot(times, TempEffect_values/TempEffect_values.max(), label='Temperature effect')
-    ax2.plot(times, CO2Effect_values/CO2Effect_values.max(), label='CO2 effect')
-    ax2.plot(times, Photosynthesis_values/Photosynthesis_values.max(), label='Photosynthesis')
-    ax2.plot(times, GlovalTemp_values/GlovalTemp_values.max(), label='Global Temperature')
+    ax2.plot(times, norm(AtmCO2_values), label=f'Atmosphere CO2 {range_label(AtmCO2_values)}', color=palette['co2'], linewidth=2)
+    ax2.plot(times, norm(TempEffect_values), label=f'Temperature effect {range_label(TempEffect_values)}', color=palette['temp'], linewidth=2)
+    ax2.plot(times, norm(CO2Effect_values), label=f'CO2 effect {range_label(CO2Effect_values)}', color='tab:blue', linewidth=2)
+    ax2.plot(times, norm(Photosynthesis_values), label=f'Photosynthesis {range_label(Photosynthesis_values)}', color=palette['photo'], linewidth=2)
+    ax2.plot(times, norm(GlovalTemp_values), label=f'Global temperature {range_label(GlovalTemp_values)}', color='tab:orange', linestyle='--', linewidth=2)
+    ax2.set_ylabel('Normalized (min→0, max→1)')
+    ax2.set_title('Climate and Biosphere Effects')
     ax2.set_xlabel('Time (years)')
-    ax2.set_title('Carbon Cycle Simulation - Part 2')
-    ax2.legend()
-    ax2.grid()
+    legend2 = ax2.legend(ncol=1, frameon=False, loc='upper left', fontsize=9)
+    for text, handle in zip(legend2.get_texts(), legend2.legend_handles):
+        text.set_color(handle.get_color())
 
     # Subplot 3
     FossilFuelsCombustion_values = np.array([FossilFuelsCombustion(t) for t in times])
-    ax3.plot(times, results[:, 1]/results[:,1].max(), label='Carbonate Rock')
-    ax3.plot(times, FossilFuelsCombustion_values/FossilFuelsCombustion_values.max(), label='Fossil Fuel Combustion')
-    ax3.plot(times, results[:, 2]/results[:,2].max(), label='Deep Ocean')
-    ax3.plot(times, results[:, 6]/results[:,6].max(), label='Surface Ocean')
-    ax3.plot(times, results[:, 7]/results[:,7].max(), label='Veg Land Area %')
+    ax3.plot(times, norm(results[:, 1]), label=f'Carbonate Rock {range_label(results[:, 1])}', color=palette['rock'], linewidth=2)
+    ax3.plot(times, norm(FossilFuelsCombustion_values), label=f'Fossil Fuel Combustion {range_label(FossilFuelsCombustion_values)}', color=palette['fossil'], linewidth=2)
+    ax3.plot(times, norm(results[:, 2]), label=f'Deep Ocean {range_label(results[:, 2])}', color=palette['deep'], linewidth=2)
+    ax3.plot(times, norm(results[:, 6]), label=f'Surface Ocean {range_label(results[:, 6])}', color=palette['surface'], linewidth=2)
+    ax3.plot(times, norm(results[:, 7]), label=f'Veg Land Area % {range_label(results[:, 7])}', color=palette['veg'], linewidth=2)
     ax3.set_xlabel('Time (years)')
-    ax3.set_ylabel('Carbon (Gt) / Percentage (%)')
-    ax3.set_title('Carbon Cycle Simulation - Part 3')
-    ax3.legend()
-    ax3.grid()
+    ax3.set_ylabel('Normalized (min→0, max→1)')
+    ax3.set_title('Ocean–Geology–Land Coupling')
+    legend3 = ax3.legend(ncol=1, frameon=False, loc='upper left', fontsize=9)
+    for text, handle in zip(legend3.get_texts(), legend3.legend_handles):
+        text.set_color(handle.get_color())
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
-    plt.savefig(output_path)
+    for ax in (ax1, ax2, ax3):
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_ylim(0, 1)
+        ax.grid(alpha=0.25)
+
+    plt.savefig(output_path, dpi=300)
     plt.show()
     print(f'Saved plot to: {output_path}')
 
 def main():
     t0 = 1850
-    tf = 2100
-    dt = 1.0
+    tf = 1850 + 750
+    dt = 0.1
     times, results = run_simulation(x0, t0, tf, dt)
     plot_results(times, results, x0, dt)
 main()
