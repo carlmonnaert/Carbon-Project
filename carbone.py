@@ -88,7 +88,13 @@ def KCO2(WaterTemp):
     return .035+(.0019*(WaterTemp-278))
 # @njit
 def HCO3(Kcarb, SurfCConc):
-    return(SurfCConc-(np.sqrt(SurfCConc**2-Alk*(2*SurfCConc-Alk)*(1-4*Kcarb))))/(1-4*Kcarb)
+    denom = 1 - 4 * Kcarb
+    if abs(denom) < 1e-10:
+        return SurfCConc / 2  #in order to avoid dividing by zero 
+    discriminant = SurfCConc**2 - Alk * (2*SurfCConc - Alk) * (1 - 4*Kcarb)
+    if discriminant < 0:
+        discriminant = 0  # avoid negative roots
+    return (SurfCConc - np.sqrt(discriminant)) / denom
 # @njit
 def CO3(HCO3):
     return (Alk-HCO3)/2
@@ -330,11 +336,47 @@ def compare_with_historical_data(times, results, historical_data_path='./data/da
     plt.show()
     print('Saved comparison plot to: ./data/plots/comparisons/atmospheric_co2_temperature_comparison.pdf')
 
-def main():
+def step_rk4(x, t, dt): # implementation of runge kutta4
+    k1 = derivative(x, t)
+    k2 = derivative(x + dt/2 * k1, t + dt/2)
+    k3 = derivative(x + dt/2 * k2, t + dt/2)
+    k4 = derivative(x + dt * k3, t + dt)
+    return x + (dt / 6) * (k1 + 2*k2 + 2*k3 + k4)
+
+def run_simulation_rk4(x0, t0, tf, dt):
+    times = np.arange(t0, tf + dt, dt)
+    results = np.zeros((len(times), len(x0)))
+    results[0] = x0
+    for i in range(1, len(times)):
+        results[i] = step_rk4(results[i-1], times[i-1], dt)
+    return times, results
+
+def comparison_euler_rg4(): # comparison between the two methods.
     t0 = 1850
     tf = 2015
-    dt = 0.1
-    times, results = run_simulation(x0, t0, tf, dt)
-    # plot_results(times, results, x0, dt)
-    compare_with_historical_data(times, results)
-main()
+
+    plt.figure(figsize=(12, 5))
+
+    for dt in [2.0, 1.0, 0.1]:
+        times_euler, results_euler = run_simulation(x0, t0, tf, dt)
+        times_rk4,   results_rk4   = run_simulation_rk4(x0, t0, tf, dt)
+
+        co2_euler = np.array([AtmCO2(a) for a in results_euler[:, 0]])
+        co2_rk4   = np.array([AtmCO2(a) for a in results_rk4[:, 0]])
+
+        # On ignore les valeurs aberrantes d'Euler pour l'affichage
+        co2_euler = np.clip(co2_euler, 0, 600)
+
+        plt.plot(times_euler, co2_euler, label=f'Euler dt={dt}', linewidth=2)
+        plt.plot(times_rk4,   co2_rk4,   label=f'RK4 dt={dt}',   linewidth=2, linestyle='--')
+
+    plt.ylim(250, 600)
+    plt.xlabel('Année')
+    plt.ylabel('CO₂ (ppm)')
+    plt.title('Euler vs RK4 regarding the step dt')
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('./data/plots/comparisons/euler_rungekutta4comparison.pdf', dpi=300)
+    plt.show()
+
