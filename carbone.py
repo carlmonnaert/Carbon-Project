@@ -353,7 +353,7 @@ def run_simulation_rk4(x0, t0, tf, dt):
 
 def comparison_euler_rg4(): # comparison between the two methods.
     t0 = 1850
-    tf = 2015
+    tf = 2030
 
     plt.figure(figsize=(12, 5))
 
@@ -380,3 +380,52 @@ def comparison_euler_rg4(): # comparison between the two methods.
     plt.savefig('./data/plots/comparisons/euler_rungekutta4comparison.pdf', dpi=300)
     plt.show()
 
+def analyse_convergence():
+    t0 = 1850
+    tf = 2015
+    
+    # Reference solution using RK4 with very small dt
+    # surrogate for the exact solution: small enough that its own error is negligible 
+    dt_ref = 0.001  
+    times_ref, results_ref = run_simulation_rk4(x0, t0, tf, dt_ref)
+    co2_ref_final = AtmCO2(results_ref[-1, 0])
+    
+    # Only stable time steps
+    dts = np.array([0.1, 0.05, 0.02, 0.01, 0.005])
+
+    errors_euler = []
+    errors_rk4   = []
+    
+    for dt in dts:
+        _, res_euler = run_simulation(x0, t0, tf, dt)
+        _, res_rk4   = run_simulation_rk4(x0, t0, tf, dt)
+        
+        errors_euler.append(abs(AtmCO2(res_euler[-1, 0]) - co2_ref_final))
+        errors_rk4.append(abs(AtmCO2(res_rk4[-1, 0]) - co2_ref_final))
+    
+    # Log-log plot
+    plt.figure(figsize=(8, 5))
+    plt.loglog(dts, errors_euler, 'o-', label='Euler', linewidth=2)
+    plt.loglog(dts, errors_rk4,   's-', label='RK4',   linewidth=2)
+    
+    # Reference slopes anchored at the first point (dt=0.1) for better visualization
+
+    dts_arr = np.array(dts)
+    plt.loglog(dts_arr, errors_euler[0] * (dts_arr / dts[0])**1,
+               'k--', alpha=0.5, label='Slope 1 (Euler theoretical)')
+    plt.loglog(dts_arr, errors_rk4[0]   * (dts_arr / dts[0])**4,
+               'k:',  alpha=0.5, label='Slope 4 (RK4 theoretical)')
+    
+    plt.xlabel('dt (years)')
+    plt.ylabel('Absolute CO₂ error (ppm)')
+    plt.title('Convergence analysis — Euler vs RK4')
+    plt.legend()
+    plt.grid(alpha=0.3, which='both')
+    plt.tight_layout()
+    
+ 
+    plt.savefig('./data/plots/comparisons/analysis of the convergence rk4 vs euler', dpi=300)
+
+    plt.show()
+
+analyse_convergence()
