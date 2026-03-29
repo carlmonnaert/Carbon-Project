@@ -351,6 +351,19 @@ def run_simulation_rk4(x0, t0, tf, dt):
         results[i] = step_rk4(results[i-1], times[i-1], dt)
     return times, results
 
+def step_heun(x,t,dt):
+    k1 = derivative(x, t)
+    k2 = derivative(x + dt* k1, t + dt)
+    return x + (dt / 2) * (k1 + k2)
+
+def run_simulation_heun(x0, t0, tf, dt):
+    times = np.arange(t0, tf + dt, dt)
+    results = np.zeros((len(times), len(x0)))
+    results[0] = x0
+    for i in range(1, len(times)):
+        results[i] = step_heun(results[i-1], times[i-1], dt)
+    return times, results
+
 def comparison_euler_rg4(): # comparison between the two methods.
     t0 = 1850
     tf = 2030
@@ -360,20 +373,23 @@ def comparison_euler_rg4(): # comparison between the two methods.
     for dt in [2.0, 1.0, 0.1]:
         times_euler, results_euler = run_simulation(x0, t0, tf, dt)
         times_rk4,   results_rk4   = run_simulation_rk4(x0, t0, tf, dt)
+        times_heun,   results_heun   = run_simulation_heun(x0, t0, tf, dt)
 
         co2_euler = np.array([AtmCO2(a) for a in results_euler[:, 0]])
         co2_rk4   = np.array([AtmCO2(a) for a in results_rk4[:, 0]])
+        co2_heun   = np.array([AtmCO2(a) for a in results_heun[:, 0]])
 
         # On ignore les valeurs aberrantes d'Euler pour l'affichage
         co2_euler = np.clip(co2_euler, 0, 600)
 
         plt.plot(times_euler, co2_euler, label=f'Euler dt={dt}', linewidth=2)
         plt.plot(times_rk4,   co2_rk4,   label=f'RK4 dt={dt}',   linewidth=2, linestyle='--')
+        plt.plot(times_heun,   co2_heun,   label=f'Heun dt={dt}',   linewidth=2)
 
     plt.ylim(250, 600)
     plt.xlabel('Année')
     plt.ylabel('CO₂ (ppm)')
-    plt.title('Euler vs RK4 regarding the step dt')
+    plt.title('Euler vs RK4 vs Heun regarding the step dt')
     plt.legend()
     plt.grid(alpha=0.3)
     plt.tight_layout()
@@ -395,18 +411,22 @@ def analyse_convergence():
 
     errors_euler = []
     errors_rk4   = []
+    errors_heun  = []
     
     for dt in dts:
         _, res_euler = run_simulation(x0, t0, tf, dt)
         _, res_rk4   = run_simulation_rk4(x0, t0, tf, dt)
+        _, res_heun   = run_simulation_heun(x0, t0, tf, dt)
         
         errors_euler.append(abs(AtmCO2(res_euler[-1, 0]) - co2_ref_final))
         errors_rk4.append(abs(AtmCO2(res_rk4[-1, 0]) - co2_ref_final))
+        errors_heun.append(abs(AtmCO2(res_heun[-1, 0]) - co2_ref_final))
     
     # Log-log plot
     plt.figure(figsize=(8, 5))
     plt.loglog(dts, errors_euler, 'o-', label='Euler', linewidth=2)
     plt.loglog(dts, errors_rk4,   's-', label='RK4',   linewidth=2)
+    plt.loglog(dts, errors_heun,   's-', label='Heun',   linewidth=2)
     
     # Reference slopes anchored at the first point (dt=0.1) for better visualization
 
@@ -415,10 +435,12 @@ def analyse_convergence():
                'k--', alpha=0.5, label='Slope 1 (Euler theoretical)')
     plt.loglog(dts_arr, errors_rk4[0]   * (dts_arr / dts[0])**4,
                'k:',  alpha=0.5, label='Slope 4 (RK4 theoretical)')
+    plt.loglog(dts_arr, errors_heun[0]   * (dts_arr / dts[0])**4,
+               'k:',  alpha=0.5, label='Slope 4 (Heun theoretical)')
     
     plt.xlabel('dt (years)')
     plt.ylabel('Absolute CO₂ error (ppm)')
-    plt.title('Convergence analysis — Euler vs RK4')
+    plt.title('Convergence analysis — Euler vs RK4 vs Heun')
     plt.legend()
     plt.grid(alpha=0.3, which='both')
     plt.tight_layout()
@@ -429,3 +451,4 @@ def analyse_convergence():
     plt.show()
 
 analyse_convergence()
+
