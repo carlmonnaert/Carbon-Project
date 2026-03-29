@@ -450,5 +450,83 @@ def analyse_convergence():
 
     plt.show()
 
-analyse_convergence()
+#analyse_convergence()
 
+def step_AM3(x,t,dt,z0,z1):
+    k1=derivative(x,t)
+    x_new= x +(dt/12)*(23*k1 - 16*z0 +5*z1)
+    k2=derivative(x_new,t+dt)
+    return x +(dt/12)*(5*k2 + 8*k1 - z0)
+
+def run_simulation_AM3(x0, x1, x2, t0, tf, dt):
+    times = np.arange(t0, tf + dt, dt)
+    results = np.zeros((len(times), len(x0)))
+    results[0] = x0
+    results[1] = x1
+    results[2] = x2
+    z1=derivative(results[0],times[0])
+    z0=derivative(results[1],times[1])
+    for i in range(3, len(times)):
+        results[i] = step_AM3(results[i-1], times[i-1], dt,z0,z1)
+        z1=z0
+        z0=derivative(results[i-1],times[i-1])
+    return times, results
+
+def analyse_convergence2():
+    t0 = 1850
+    tf = 2015
+    
+    # Reference solution using RK4 with very small dt
+    # surrogate for the exact solution: small enough that its own error is negligible 
+    dt_ref = 0.001  
+    times_ref, results_ref = run_simulation_rk4(x0, t0, tf, dt_ref)
+    co2_ref_final = AtmCO2(results_ref[-1, 0])
+    
+    # Only stable time steps
+    dts = np.array([0.1, 0.05, 0.02, 0.01, 0.005])
+
+    errors_AM = []
+    errors_rk4   = []
+    errors_heun  = []
+    
+    for dt in dts:
+        x1 = step_rk4(x0, t0, dt)
+        x2 = step_rk4(x1, t0 + dt, dt)
+
+        _, res_AM = run_simulation_AM3(x0,x1,x2, t0, tf, dt)
+        _, res_rk4   = run_simulation_rk4(x0, t0, tf, dt)
+        _, res_heun   = run_simulation_heun(x0, t0, tf, dt)
+        
+        errors_AM.append(abs(AtmCO2(res_AM[-1, 0]) - co2_ref_final))
+        errors_rk4.append(abs(AtmCO2(res_rk4[-1, 0]) - co2_ref_final))
+        errors_heun.append(abs(AtmCO2(res_heun[-1, 0]) - co2_ref_final))
+    
+    # Log-log plot
+    plt.figure(figsize=(8, 5))
+    plt.loglog(dts, errors_AM, 'o-', label='AM3', linewidth=2)
+    plt.loglog(dts, errors_rk4,   's-', label='RK4',   linewidth=2)
+    plt.loglog(dts, errors_heun,   's-', label='Heun',   linewidth=2)
+    
+    # Reference slopes anchored at the first point (dt=0.1) for better visualization
+
+    dts_arr = np.array(dts)
+    plt.loglog(dts_arr, errors_AM[0] * (dts_arr / dts[0])**1,
+               'k--', alpha=0.5, label='Slope 1 (AM theoretical)')
+    plt.loglog(dts_arr, errors_rk4[0]   * (dts_arr / dts[0])**4,
+               'k:',  alpha=0.5, label='Slope 4 (RK4 theoretical)')
+    plt.loglog(dts_arr, errors_heun[0]   * (dts_arr / dts[0])**4,
+               'k:',  alpha=0.5, label='Slope 4 (Heun theoretical)')
+    
+    plt.xlabel('dt (years)')
+    plt.ylabel('Absolute CO₂ error (ppm)')
+    plt.title('Convergence analysis — AM3 vs RK4 vs Heun')
+    plt.legend()
+    plt.grid(alpha=0.3, which='both')
+    plt.tight_layout()
+    
+ 
+    plt.savefig('./data/plots/comparisons/analysis of the convergence rk4 vs AM', dpi=300)
+
+    plt.show()
+
+analyse_convergence2()
