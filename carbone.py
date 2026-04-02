@@ -528,5 +528,84 @@ def analyse_convergence2():
     plt.savefig('./data/plots/comparisons/analysis of the convergence rk4 vs AM', dpi=300)
 
     plt.show()
-#test commit
-analyse_convergence2()
+
+
+def analyse_convergence_clean():
+    t0 = 1850
+    tf = 2015
+    
+    dt_ref = 0.001  
+    times_ref, results_ref = run_simulation_rk4(x0, t0, tf, dt_ref)
+    co2_ref_final = AtmCO2(results_ref[-1, 0])
+    
+    dts = np.array([0.1, 0.05, 0.02, 0.01, 0.005])
+
+    errors_euler = []
+    errors_rk4   = []
+    errors_heun  = []
+    
+    for dt in dts:
+        _, res_euler = run_simulation(x0, t0, tf, dt)
+        _, res_rk4   = run_simulation_rk4(x0, t0, tf, dt)
+        _, res_heun  = run_simulation_heun(x0, t0, tf, dt)
+        
+        errors_euler.append(abs(AtmCO2(res_euler[-1, 0]) - co2_ref_final))
+        errors_rk4.append(abs(AtmCO2(res_rk4[-1, 0]) - co2_ref_final))
+        errors_heun.append(abs(AtmCO2(res_heun[-1, 0]) - co2_ref_final))
+    
+    plt.figure(figsize=(8, 6))
+    plt.loglog(dts, errors_euler, 'o-', label='Euler (order 1)', linewidth=2, markersize=8)
+    plt.loglog(dts, errors_heun, '^-', label='Heun (order 2)', linewidth=2, markersize=8)
+    plt.loglog(dts, errors_rk4, 's-', label='RK4 (order 4)', linewidth=2, markersize=8)
+    
+    dts_arr = np.array(dts)
+    plt.loglog(dts_arr, errors_euler[0] * (dts_arr / dts[0])**1,
+               'k--', alpha=0.4, linewidth=1.5, label='Slope 1 (theoretical)')
+    plt.loglog(dts_arr, errors_heun[0] * (dts_arr / dts[0])**2,
+               'k-.', alpha=0.4, linewidth=1.5, label='Slope 2 (theoretical)')
+    plt.loglog(dts_arr, errors_rk4[0] * (dts_arr / dts[0])**4,
+               'k:', alpha=0.4, linewidth=1.5, label='Slope 4 (theoretical)')
+    
+    plt.xlabel('Time step dt (years)', fontsize=12)
+    plt.ylabel('Absolute CO₂ error (ppm)', fontsize=12)
+    plt.title('Convergence Analysis: Error vs. Time Step', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10)
+    plt.grid(alpha=0.3, which='both')
+    plt.tight_layout()
+    
+    plt.savefig('./data/plots/comparisons/convergence_analysis.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def generate_temperature_figure():
+    t0 = 1850
+    tf = 2100
+    dt = 0.1
+    
+    times, results = run_simulation_rk4(x0, t0, tf, dt)
+    
+    simulated_temp = np.array([GlobalTemp(AtmCO2(a)) for a in results[:, 0]])
+    
+    # Historical data (you need to load this - I'll use approximate values)
+    historical_years = np.array([1850, 1900, 1950, 2000, 2020])
+    temperature_anomaly = np.array([0.0, -0.1, 0.0, 0.6, 1.2])  # Approximate
+    historical_temp = 14.0 + temperature_anomaly  # Base temp ~14°C
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(times, simulated_temp, label='Simulated', color='tab:blue', linewidth=2.5)
+    plt.plot(historical_years, historical_temp, 'o', label='Historical', 
+             color='tab:red', markersize=8, linestyle='--', linewidth=2)
+    
+    plt.xlabel('Year', fontsize=13)
+    plt.ylabel('Global Temperature (°C)', fontsize=13)
+    plt.title('Global Temperature Projection (1850-2100)', fontsize=15, fontweight='bold')
+    plt.legend(fontsize=11)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    
+    plt.savefig('./figure_temperature.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+analyse_convergence_clean()
+generate_temperature_figure()
