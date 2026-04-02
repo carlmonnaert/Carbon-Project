@@ -573,7 +573,7 @@ def analyse_convergence_clean():
     plt.grid(alpha=0.3, which='both')
     plt.tight_layout()
     
-    plt.savefig('./data/plots/comparisons/convergence_analysis.png', dpi=300, bbox_inches='tight')
+    plt.savefig('./convergence_analysis.png', dpi=300, bbox_inches='tight')
     plt.show()
 
 
