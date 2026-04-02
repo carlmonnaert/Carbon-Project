@@ -108,8 +108,16 @@ FossFuelData = np.array([[1850.0, 0.00], [1875.0, 0.30], [1900.0, 0.60], [1925.0
 # CO2 equivalent of 10.05 Gt carbon is 36.88 Gt CO2
 
 
-# @njit
+SCENARIO = "BAU" # "Business As Usual" 
+
+# @njit 
 def FossilFuelsCombustion(t):
+    global SCENARIO
+    
+    # LE HACK POUR BIBI : Si on est dans le scénario d'action, on coupe tout en 2030
+    if SCENARIO == "ACTION" and t > 2030:
+        return 0.0 
+        
     i = 0
     if t >= FossFuelData[-1,0]:
         return FossFuelData[-1,1]
@@ -586,7 +594,6 @@ def generate_temperature_figure():
     
     simulated_temp = np.array([GlobalTemp(AtmCO2(a)) for a in results[:, 0]])
     
-    # Historical data (you need to load this - I'll use approximate values)
     historical_years = np.array([1850, 1900, 1950, 2000, 2020])
     temperature_anomaly = np.array([0.0, -0.1, 0.0, 0.6, 1.2])  # Approximate
     historical_temp = 14.0 + temperature_anomaly  # Base temp ~14°C
@@ -606,6 +613,41 @@ def generate_temperature_figure():
     plt.savefig('./figure_temperature.png', dpi=300, bbox_inches='tight')
     plt.show()
 
+def generer_scenarios_bibi():
+    global SCENARIO
+    t0 = 1850
+    tf = 2100
+    dt = 0.1
+    
+    SCENARIO = "BAU"
+    times, results_bau = run_simulation_rk4(x0, t0, tf, dt)
+    
+    SCENARIO = "ACTION"
+    _, results_action = run_simulation_rk4(x0, t0, tf, dt)
+    
+    temp_bau = [GlobalTemp(AtmCO2(a)) for a in results_bau[:, 0]]
+    temp_action = [GlobalTemp(AtmCO2(a)) for a in results_action[:, 0]]
+    
+    plt.figure(figsize=(9, 5))
+    plt.plot(times, temp_bau, label='Scenario A (Business As Usual)', color='tab:red', linewidth=2.5)
+    plt.plot(times, temp_action, label='Scenario B (Zero Emissions after 2030)', color='tab:green', linewidth=2.5)
+    
+    plt.axvline(x=2030, color='grey', linestyle='--', label='Action taken (2030)')
+    
+    plt.xlabel('Year', fontsize=12)
+    plt.ylabel('Global Temperature (°C)', fontsize=12)
+    plt.title('Future Climate Projections for Bibi (1850 - 2100)', fontsize=14)
+    plt.legend(loc='upper left')
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    
+    save_path = 'bibi_scenarios.png'
+    plt.savefig(save_path, dpi=300)
+    plt.show()
+    
 
+generer_scenarios_bibi()
+
+SCENARIO = "BAU"
 analyse_convergence_clean()
 generate_temperature_figure()
