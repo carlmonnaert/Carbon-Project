@@ -1,7 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import os
 # from numba import njit
+
+BASE_DIR = Path(__file__).resolve().parent
 
 # Initial conditions
 Atmosphere_Initial = 750
@@ -114,7 +117,6 @@ SCENARIO = "BAU" # "Business As Usual"
 def FossilFuelsCombustion(t):
     global SCENARIO
     
-    # LE HACK POUR BIBI : Si on est dans le scénario d'action, on coupe tout en 2030
     if SCENARIO == "ACTION" and t > 2030:
         return 0.0 
         
@@ -340,7 +342,9 @@ def compare_with_historical_data(times, results, historical_data_path='./data/da
     axs[1].spines['top'].set_visible(False)
     axs[1].spines['right'].set_visible(False)
     
-    plt.savefig('./data/plots/comparisons/atmospheric_co2_temperature_comparison.pdf', dpi=300)
+    output_path = BASE_DIR / 'data/plots/comparisons/atmospheric_co2_temperature_comparison.pdf'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
     plt.show()
     print('Saved comparison plot to: ./data/plots/comparisons/atmospheric_co2_temperature_comparison.pdf')
 
@@ -401,7 +405,9 @@ def comparison_euler_rg4(): # comparison between the two methods.
     plt.legend()
     plt.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig('./data/plots/comparisons/euler_rungekutta4comparison.pdf', dpi=300)
+    output_path = BASE_DIR / 'data/plots/comparisons/euler_rungekutta4comparison.pdf'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
     plt.show()
 
 def analyse_convergence():
@@ -454,7 +460,9 @@ def analyse_convergence():
     plt.tight_layout()
     
  
-    plt.savefig('./data/plots/comparisons/analysis of the convergence rk4 vs euler', dpi=300)
+    output_path = BASE_DIR / 'data/plots/comparisons/analysis of the convergence rk4 vs euler'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
 
     plt.show()
 
@@ -533,7 +541,9 @@ def analyse_convergence2():
     plt.tight_layout()
     
  
-    plt.savefig('./data/plots/comparisons/analysis of the convergence rk4 vs AM', dpi=300)
+    output_path = BASE_DIR / 'data/plots/comparisons/analysis of the convergence rk4 vs AM'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
 
     plt.show()
 
@@ -580,8 +590,11 @@ def analyse_convergence_clean():
     plt.legend(fontsize=10)
     plt.grid(alpha=0.3, which='both')
     plt.tight_layout()
+    output_path = BASE_DIR / 'data/plots/comparisons/convergence_analysis'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
+
     
-    plt.savefig('./convergence_analysis.png', dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -593,24 +606,27 @@ def generate_temperature_figure():
     times, results = run_simulation_rk4(x0, t0, tf, dt)
     
     simulated_temp = np.array([GlobalTemp(AtmCO2(a)) for a in results[:, 0]])
+    simulated_anomaly = simulated_temp - simulated_temp[0] 
     
     historical_years = np.array([1850, 1900, 1950, 2000, 2020])
-    temperature_anomaly = np.array([0.0, -0.1, 0.0, 0.6, 1.2])  # Approximate
-    historical_temp = 14.0 + temperature_anomaly  # Base temp ~14°C
+    historical_anomaly = np.array([0.0, -0.1, 0.0, 0.6, 1.2]) 
     
     plt.figure(figsize=(10, 6))
-    plt.plot(times, simulated_temp, label='Simulated', color='tab:blue', linewidth=2.5)
-    plt.plot(historical_years, historical_temp, 'o', label='Historical', 
+    plt.plot(times, simulated_anomaly, label='Simulated', color='tab:blue', linewidth=2.5)
+    plt.plot(historical_years, historical_anomaly, 'o', label='Historical', 
              color='tab:red', markersize=8, linestyle='--', linewidth=2)
     
     plt.xlabel('Year', fontsize=13)
-    plt.ylabel('Global Temperature (°C)', fontsize=13)
-    plt.title('Global Temperature Projection (1850-2100)', fontsize=15, fontweight='bold')
+    plt.ylabel('Global Temperature Anomaly (°C)', fontsize=13) 
+    plt.title('Global Temperature Anomaly Projection (1850-2100)', fontsize=15, fontweight='bold')
     plt.legend(fontsize=11)
     plt.grid(alpha=0.3)
     plt.tight_layout()
     
-    plt.savefig('./figure_temperature.png', dpi=300, bbox_inches='tight')
+    output_path = BASE_DIR / 'data/plots/comparisons/figure_temperature.png'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
+    
     plt.show()
 
 def generer_scenarios_bibi():
@@ -640,9 +656,10 @@ def generer_scenarios_bibi():
     plt.legend(loc='upper left')
     plt.grid(alpha=0.3)
     plt.tight_layout()
-    
-    save_path = 'bibi_scenarios.png'
-    plt.savefig(save_path, dpi=300)
+    output_path = BASE_DIR / 'data/plots/bibi_scenarios.png'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300)
+
     plt.show()
     
 
@@ -651,3 +668,68 @@ generer_scenarios_bibi()
 SCENARIO = "BAU"
 analyse_convergence_clean()
 generate_temperature_figure()
+
+
+def plot_phase_portrait(results):
+    co2_concentration = np.array([AtmCO2(a) for a in results[:, 0]])
+    temp_absolue = np.array([GlobalTemp(c) for c in co2_concentration])
+    temp_anomaly = temp_absolue - temp_absolue[0] 
+    
+    plt.figure(figsize=(8, 6))
+    
+    plt.plot(co2_concentration, temp_anomaly, color='purple', linewidth=2.5, label='Climate Trajectory')
+    
+    plt.scatter(co2_concentration[0], temp_anomaly[0], color='blue', s=120, label='Start (1850)', zorder=5)
+    plt.scatter(co2_concentration[-1], temp_anomaly[-1], color='red', s=120, label='End (2100)', zorder=5)
+    
+    plt.annotate('Pre-Industrial', (co2_concentration[0], temp_anomaly[0]), 
+                 textcoords="offset points", xytext=(10,10), ha='left')
+    plt.annotate('Catastrophic Warming', (co2_concentration[-1], temp_anomaly[-1]), 
+                 textcoords="offset points", xytext=(-10,-15), ha='right', color='red')
+                 
+    plt.xlabel('Atmospheric CO2 Concentration (ppm)', fontsize=12)
+    plt.ylabel('Global Temperature Anomaly (°C)', fontsize=12)
+    plt.title('Phase Portrait: Temperature vs. CO2', fontsize=14, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+    
+    plt.savefig('phase_portrait.png', dpi=300)
+    plt.show()
+
+
+
+#plot_phase_portrait(results_final)
+
+def verifier_conservation_masse(times, results):
+ 
+    masse_totale = np.sum(results[:, 0:7], axis=1)
+    
+    plt.figure(figsize=(9, 5))
+    
+    plt.plot(times, masse_totale, color='tab:green', linewidth=3, label='Total Carbon Mass')
+    
+
+    masse_initiale = masse_totale[0]
+    plt.ylim(masse_initiale * 0.999, masse_initiale * 1.001) 
+    
+    plt.xlabel('Year', fontsize=12)
+    plt.ylabel('Total Mass (Gt of Carbon)', fontsize=12)
+    plt.title('Physical Validation: Carbon Mass Conservation', fontsize=14, fontweight='bold')
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    
+    
+    plt.savefig('mass_conservation.png', dpi=300)
+    plt.show()
+
+
+
+t0 = 1850
+tf = 2100
+dt = 0.1
+
+times_final, results_final = run_simulation_rk4(x0, t0, tf, dt)
+
+verifier_conservation_masse(times_final, results_final)
