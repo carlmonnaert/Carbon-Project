@@ -304,7 +304,7 @@ def plot_results(times, results, initial_state, dt, output_base_dir='./data/plot
     print(f'Saved plot to: {output_path}')
 
 # Function to plot the comparison between the atmospheric CO2 levels from the simulation with historical data
-def compare_with_historical_data(times, results, historical_data_path='./data/datasets/carbon_atmosphere.csv', temperature_data_path='./data/datasets/global_temperature.csv'):
+def compare_with_historical_data(times, results, historical_data_path=BASE_DIR / 'data/datasets/carbon_atmosphere.csv', temperature_data_path=BASE_DIR / 'data/datasets/global_temperature.csv'):
     historical_data = np.genfromtxt(historical_data_path, delimiter=',', skip_header=1)
     historical_years = historical_data[:, 0]
     historical_co2 = historical_data[:, 1]
@@ -730,6 +730,10 @@ t0 = 1850
 tf = 2100
 dt = 0.1
 
+# Lancement de la simulation avec RK4
 times_final, results_final = run_simulation_rk4(x0, t0, tf, dt)
 
+
+plot_results(times_final, results_final, x0, dt)
+compare_with_historical_data(times_final, results_final)
 verifier_conservation_masse(times_final, results_final)
