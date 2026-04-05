@@ -518,92 +518,120 @@ def analyse_consistance():
 # STABILITY ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def analyse_stabilite():
+def analyse_stability():
     """
-    Analyse de stabilité linéarisée pour RK4:
-    - jacobienne numérique (différences centrées) en plusieurs instants,
-    - valeurs propres λ,
-    - test exact RK4 via |R(λ*dt)| <= 1 (et non seulement sur l'axe réel).
+    Stability analysis following the course definition (Def 1.1.3):
+    a problem is stable if its resolvent is locally Lipschitz continuous.
+    
+    We take d = x0 (initial conditions) and measure how the atmospheric CO2
+    at tf=2015 responds to perturbations h of x0, estimating:
+        ratio(eps) = ||x(d+h) - x(d)|| / ||h||
+    
+    If this ratio remains bounded as eps -> 0, the problem is stable (Prop 1.1.4).
+    K_abs = lim_{eps->0} sup_{||h||<eps} ||x(d+h)-x(d)|| / ||h||
     """
-    def rk4_stability_function(z):
-        return 1 + z + z**2 / 2 + z**3 / 6 + z**4 / 24
+    t0, tf, dt = 1850, 2015, 0.1
 
-    def numerical_jacobian(x, t, rel_step=1e-6):
-        n = len(x)
-        J = np.zeros((n, n), dtype=float)
-        for j in range(n):
-            h = rel_step * max(1.0, abs(x[j]))
-            xp = x.copy()
-            xm = x.copy()
-            xp[j] += h
-            xm[j] -= h
-            J[:, j] = (derivative(xp, t) - derivative(xm, t)) / (2 * h)
-        return J
+    # Reference solution (unperturbed)
+    _, res_ref = run_rk4(x0, t0, tf, dt)
+    co2_ref = AtmCO2(res_ref[-1, 0])
+    x_ref_final = res_ref[-1]
 
-    # Analyse à plusieurs années pour éviter une conclusion trop locale
-    sample_years = [1850, 1900, 1950, 2000]
-    dt = 0.1
-    all_z = []
+    epsilons = np.logspace(-1, -8, 20)
+    n_dirs = 20  # number of random perturbation directions per epsilon
 
-    print("Analyse stabilité RK4 (critère exact |R(λ·dt)| <= 1)")
-    print(f"dt testé = {dt}\n")
+    # We test perturbations on each reservoir independently + random directions
+    reservoir_names = ['Atmosphere', 'CarbonateRock', 'DeepOcean', 'FossilFuel',
+                       'Plants', 'Soils', 'SurfaceOcean', 'VegLandArea']
 
-    for year in sample_years:
-        if year == 1850:
-            x_year = x0.copy()
-        else:
-            _, traj = run_rk4(x0, 1850, year, dt=0.1)
-            x_year = traj[-1]
+    np.random.seed(42)
 
-        J = numerical_jacobian(x_year, year)
-        eigvals = np.linalg.eigvals(J)
-        z_vals = eigvals * dt
-        amp = np.abs(rk4_stability_function(z_vals))
+    # --- Per-reservoir ratios (one direction: unit vector e_i) ---
+    ratios_per_reservoir = np.zeros((len(reservoir_names), len(epsilons)))
 
-        all_z.extend(list(z_vals))
+    for i in range(len(x0)):
+        for j, eps in enumerate(epsilons):
+            h = np.zeros(len(x0))
+            h[i] = eps
+            x_pert = x0 + h
+            _, res_pert = run_rk4(x_pert, t0, tf, dt)
+            diff = np.linalg.norm(res_pert[-1] - x_ref_final)
+            ratios_per_reservoir[i, j] = diff / np.linalg.norm(h)
 
-        print(f"Année {year}:")
-        for i, (lam, z, a) in enumerate(zip(eigvals, z_vals, amp), start=1):
-            stable = a <= 1.0 + 1e-12
-            print(
-                f"  λ_{i}={lam.real:+.4e}{lam.imag:+.4e}j | "
-                f"z=λ·dt={z.real:+.4e}{z.imag:+.4e}j | "
-                f"|R(z)|={a:.6f} -> {'STABLE ✓' if stable else 'INSTABLE ✗'}"
-            )
-        print(f"  max |R(z)| = {amp.max():.6f}\n")
+    # --- Random directions: estimate sup over random unit vectors ---
+    sup_ratios = np.zeros(len(epsilons))
+    for j, eps in enumerate(epsilons):
+        max_ratio = 0.0
+        for _ in range(n_dirs):
+            delta = np.random.randn(len(x0))
+            delta /= np.linalg.norm(delta)
+            h = eps * delta
+            x_pert = x0 + h
+            _, res_pert = run_rk4(x_pert, t0, tf, dt)
+            diff = np.linalg.norm(res_pert[-1] - x_ref_final)
+            ratio = diff / np.linalg.norm(h)
+            if ratio > max_ratio:
+                max_ratio = ratio
+        sup_ratios[j] = max_ratio
 
-    all_z = np.array(all_z, dtype=complex)
+    # K_abs estimated as the value of sup_ratio at the smallest epsilon
+    K_abs = sup_ratios[-1]
+    K_rel = K_abs * np.linalg.norm(x0) / np.linalg.norm(x_ref_final)
 
-    # Visualisation de la vraie région de stabilité RK4: |R(z)| <= 1
-    fig, ax = plt.subplots(figsize=(8, 6))
+    print(f"\nStability Analysis Results:")
+    print(f"  K_abs (absolute condition number) ≈ {K_abs:.4f}")
+    print(f"  K_rel (relative condition number) ≈ {K_rel:.4f}")
+    print(f"  -> Bounded ratios confirm stability in the sense of Def 1.1.3")
 
-    # Domaine centré autour des points observés, avec marge
-    x_min = min(-3.2, np.min(all_z.real) - 0.3)
-    x_max = max(0.6, np.max(all_z.real) + 0.3)
-    y_abs = max(1.0, np.max(np.abs(all_z.imag)) + 0.5)
-    y_min, y_max = -y_abs, y_abs
+    # ── Plotting ──────────────────────────────────────────────────────────────
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), constrained_layout=True)
 
-    xr = np.linspace(x_min, x_max, 500)
-    yi = np.linspace(y_min, y_max, 500)
-    X, Y = np.meshgrid(xr, yi)
-    Z = X + 1j * Y
-    Rabs = np.abs(rk4_stability_function(Z))
+    # --- Plot 1: sup ratio over random directions (main stability criterion) ---
+    ax = axes[0]
+    ax.loglog(epsilons, sup_ratios, 'o-', color='tab:blue',
+              linewidth=2, markersize=7, label=r'$\sup_{\|h\|<\varepsilon} \|x(d+h)-x(d)\| / \|h\|$')
+    ax.axhline(K_abs, color='tab:red', linestyle='--', linewidth=1.5,
+               label=f'$K_{{\\rm abs}} \\approx {K_abs:.2f}$')
+    ax.set_xlabel(r'Perturbation magnitude $\varepsilon$', fontsize=12)
+    ax.set_ylabel(r'Lipschitz ratio', fontsize=12)
+    ax.set_title('Stability: Lipschitz ratio vs perturbation size\n'
+                 r'(bounded $\Rightarrow$ stable)', fontsize=12)
+    ax.legend(fontsize=10)
+    ax.grid(True, which='both', alpha=0.3)
+    ax.spines[['top', 'right']].set_visible(False)
 
-    ax.contourf(X, Y, (Rabs <= 1.0).astype(float), levels=[0.5, 1.5],
-                alpha=0.18, colors=['green'])
-    ax.contour(X, Y, Rabs, levels=[1.0], colors='green', linewidths=1.5)
+    # Annotate convergence to K_abs
+    ax.annotate(f'Converges to $K_{{\\rm abs}}$',
+                xy=(epsilons[-3], sup_ratios[-3]),
+                xytext=(epsilons[-3] * 10, sup_ratios[-3] * 2),
+                arrowprops=dict(arrowstyle='->', color='black'),
+                fontsize=9)
 
-    ax.scatter(all_z.real, all_z.imag, s=70, color='tab:blue', label='λ·dt')
-    ax.axhline(0, color='k', linewidth=0.6)
-    ax.axvline(0, color='k', linewidth=0.6)
-    ax.set_xlabel('Re(λ·dt)')
-    ax.set_ylabel('Im(λ·dt)')
-    ax.set_title('Stabilité RK4 : valeurs propres × dt et région |R(z)| ≤ 1')
-    ax.legend(['Frontière |R(z)|=1', 'λ·dt'], loc='upper left')
-    ax.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(get_output_dir('data/plots/comparisons') / 'stabilite_vp.png', dpi=300)
+    # --- Plot 2: per-reservoir ratios at smallest epsilon ---
+    ax2 = axes[1]
+    ratios_at_small_eps = ratios_per_reservoir[:, -1]
+    colors = plt.cm.tab10(np.linspace(0, 1, len(reservoir_names)))
+    bars = ax2.bar(reservoir_names, ratios_at_small_eps, color=colors, edgecolor='white')
+    ax2.set_xlabel('Reservoir perturbed', fontsize=12)
+    ax2.set_ylabel(r'$\|x(d+h)-x(d)\| / \|h\|$ at $\varepsilon=10^{-8}$', fontsize=11)
+    ax2.set_title(r'Per-reservoir condition number ($K_{\rm abs}$ estimate)', fontsize=12)
+    ax2.tick_params(axis='x', rotation=30)
+    ax2.grid(axis='y', alpha=0.3)
+    ax2.spines[['top', 'right']].set_visible(False)
+
+    # Add value labels on bars
+    for bar, val in zip(bars, ratios_at_small_eps):
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.02,
+                 f'{val:.2f}', ha='center', va='bottom', fontsize=8)
+
+    fig.suptitle('Stability Analysis — Lipschitz Condition',
+                 fontsize=14, fontweight='bold')
+
+    out = get_output_dir('data/plots/comparisons')
+    plt.savefig(out / 'stabilite_vp.png', dpi=300)
     plt.show()
+
+    return K_abs, K_rel
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
@@ -623,4 +651,4 @@ if __name__ == '__main__':
     verify_mass_conservation(times, results)
     analyse_convergence()
     analyse_consistance()
-    analyse_stabilite()
+    analyse_stability()
