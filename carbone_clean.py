@@ -446,6 +446,73 @@ def verify_mass_conservation(times, results):
     plt.savefig(get_output_dir('data/plots/comparisons') / 'conservation_des_masses.png', dpi=300)
     plt.show()
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CONSISTANCY ANALYSIS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def analyse_consistance():
+    """
+    Erreur de troncature locale (LTE) :
+    pour chaque dt, on fait UN pas numérique depuis un état x(t*)
+    puis on compare à une référence fine à ce MEME temps t*+dt.
+    On vérifie ainsi LTE ~ O(dt^(p+1)).
+    """
+    # On évite les années-charnières (forcing fossile linéaire par morceaux)
+    # afin de mesurer les ordres théoriques en régime lisse.
+    t0 = 1860.3
+
+    def _advance_rk4(x_init, t_init, dt, n_steps):
+        x = x_init.copy()
+        h = dt / n_steps
+        t = t_init
+        for _ in range(n_steps):
+            x = _rk4_step(x, t, h)
+            t += h
+        return x
+
+    # État de départ x(t0) obtenu avec une intégration RK4 fine depuis 1850.
+    x_t0 = _advance_rk4(x0, 1850.0, t0 - 1850.0, n_steps=20000)
+
+    dts = [0.1, 0.05, 0.02, 0.01, 0.005, 0.001]
+
+    def _euler_step(x, t, h):
+        return x + h * derivative(x, t)
+
+    def _heun_step(x, t, h):
+        k1 = derivative(x, t)
+        k2 = derivative(x + h * k1, t + h)
+        return x + h / 2 * (k1 + k2)
+
+    methods = {
+        'Euler (LTE ordre 2)':  (_euler_step, 2),
+        'Heun (LTE ordre 3)':   (_heun_step, 3),
+        'RK4 (LTE ordre 5)':    (_rk4_step, 5),
+    }
+
+    plt.figure(figsize=(8, 6))
+    for label, (step_fn, order) in methods.items():
+        errs = []
+        for h in dts:
+            # Référence au même temps final t0+h (très fine, dépend de h)
+            x_ref_h = _advance_rk4(x_t0, t0, h, n_steps=2000)
+            # Un seul pas de la méthode testée depuis x(t0)
+            x_num_h = step_fn(x_t0, t0, h)
+            errs.append(abs(AtmCO2(x_num_h[0]) - AtmCO2(x_ref_h[0])))
+
+        plt.loglog(dts, errs, 'o-', label=label, linewidth=2)
+        ref = errs[0] * (np.array(dts)/dts[0])**order
+        plt.loglog(dts, ref, 'k--', alpha=0.4, label=f'Pente {order} (théorique)')
+
+    plt.xlabel('dt (années)')
+    plt.ylabel('Erreur de troncature locale (ppm)')
+    plt.title('Consistance : erreur locale vs dt')
+    plt.legend()
+    plt.grid(True, which='both', alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(get_output_dir('data/plots/comparisons') / 'consistance.png', dpi=300)
+    plt.show()
+    print("consistance done")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
@@ -464,3 +531,4 @@ if __name__ == '__main__':
     plot_temperature_anomaly()
     verify_mass_conservation(times, results)
     analyse_convergence()
+    analyse_consistance()
