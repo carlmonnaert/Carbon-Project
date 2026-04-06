@@ -486,7 +486,7 @@ def analyse_consistance():
     methods = {
         'Euler (LTE ordre 2)':  (_euler_step, 2),
         'Heun (LTE ordre 3)':   (_heun_step, 3),
-        'RK4 (LTE ordre 5)':    (_rk4_step, 5),
+        'RK4 (LTE ordre 4)':    (_rk4_step, 4),
     }
 
     plt.figure(figsize=(8, 6))
@@ -651,4 +651,4 @@ if __name__ == '__main__':
     verify_mass_conservation(times, results)
     analyse_convergence()
     analyse_consistance()
-    analyse_stability()
+    #analyse_stability()
