@@ -598,7 +598,7 @@ def analyse_stability():
     ax.legend(fontsize=10)
     ax.grid(True, which='both', alpha=0.3)
     ax.spines[['top', 'right']].set_visible(False)
-    """
+    
     # Annotate convergence to K_abs
     # ax.annotate(f'Converges to $K_{{\\rm abs}}$',
     #             xy=(epsilons[-3], sup_ratios[-3]),
