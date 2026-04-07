@@ -212,16 +212,19 @@ def run_am3(x0, t0, tf, dt):
 # CONVERGENCE ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def analyse_convergence():
-    """
-    We compute absolute CO2 errors against a high-resolution RK4 reference
-    (dt=0.001) and plot them on a log-log scale to verify theoretical orders.
-    """
-    t0, tf = 1850, 2015
-    _, ref = run_rk4(x0, t0, tf, dt=0.001)
-    co2_ref = AtmCO2(ref[-1, 0])
+def _make_times(t0, tf, dt):
+    n_steps = int(round((tf - t0) / dt))
+    return np.linspace(t0, tf, n_steps + 1)
 
-    dts = [0.1, 0.05, 0.02, 0.01, 0.005]
+def analyse_convergence():
+    t0, tf = 1850, 1874 
+    dt_ref = 0.0005
+    
+    # z(t) : Trajectoire de référence complète
+    _, ref = run_rk4(x0, t0, tf, dt=dt_ref)
+
+    dts = [0.5, 0.2, 0.1, 0.05, 0.02, 0.01] 
+    
     methods = {
         'Euler (order 1)': (run_euler,  'o-', 1),
         'Heun (order 2)':  (run_heun,   '^-', 2),
@@ -230,20 +233,42 @@ def analyse_convergence():
 
     plt.figure(figsize=(8, 6))
     for label, (runner, style, order) in methods.items():
-        errs = [abs(AtmCO2(runner(x0, t0, tf, h)[1][-1, 0]) - co2_ref) for h in dts]
+        errs = []
+        for h in dts:
+            # y_n : Trajectoire grossière calculée avec le pas h
+            _, res = runner(x0, t0, tf, h)
+            
+            # Pour comparer y_n et z(t_n) au même instant, on extrait les points
+            # de la référence qui correspondent exactement aux instants de la méthode grossière.
+            step_ratio = int(round(h / dt_ref))
+            ref_alignee = ref[::step_ratio] 
+            
+            # Application stricte de la définition 4.3.5 : 
+            # 1. On calcule la différence pour chaque 'n' (en norme relative pour la lisibilité)
+            diff = (res - ref_alignee) / x0
+            
+            # 2. On calcule la norme Euclidienne ||y_n - z(t_n)|| pour chaque instant n
+            normes_par_instant = np.linalg.norm(diff, axis=1)
+            
+            # 3. On prend le MAX sur tout l'intervalle 0 <= n <= N
+            erreur_globale_max = np.max(normes_par_instant)
+            
+            errs.append(erreur_globale_max)
+            
         plt.loglog(dts, errs, style, label=label, linewidth=2, markersize=8)
-        # Reference slope anchored at largest dt
+        
+        # Pente de référence
         ref_slope = errs[0] * (np.array(dts) / dts[0]) ** order
         plt.loglog(dts, ref_slope, 'k--' if order==1 else ('k-.' if order==2 else 'k:'),
                    alpha=0.4, linewidth=1.5, label=f'Slope {order} (theoretical)')
 
     plt.xlabel('Time step dt (years)', fontsize=12)
-    plt.ylabel('Absolute CO₂ error (ppm)', fontsize=12)
-    plt.title('Convergence Analysis: Error vs. Time Step', fontsize=14, fontweight='bold')
-    plt.legend(fontsize=10)
+    plt.ylabel(r'Global error $\max_{n} \left\| (y_n - z(t_n)) / x_0 \right\|_2$', fontsize=12)
+    plt.title('Convergence Analysis: Error vs. Time Step (1850-1874)', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10, loc='lower right') 
     plt.grid(alpha=0.3, which='both')
     plt.tight_layout()
-    plt.savefig(get_output_dir('data/plots/comparisons') / 'convergence_analysis.png', dpi=300)
+    plt.savefig(get_output_dir('data/plots/comparisons') / 'convergence_analysis_strict.png', dpi=300)
     plt.show()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -653,6 +678,6 @@ if __name__ == '__main__':
     # compare_with_historical(times, results)
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
-    # analyse_convergence()
+    analyse_convergence()
     # analyse_consistance()
-    analyse_stability()
+    #analyse_stability()
