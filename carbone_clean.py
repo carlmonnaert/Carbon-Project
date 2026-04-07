@@ -537,7 +537,7 @@ def analyse_stability():
     co2_ref = AtmCO2(res_ref[-1, 0])
     x_ref_final = res_ref[-1]
 
-    epsilons = np.logspace(-1, -8, 20)
+    epsilons = np.logspace(-1, -10, 20)
     n_dirs = 20  # number of random perturbation directions per epsilon
 
     # We test perturbations on each reservoir independently + random directions
@@ -594,18 +594,17 @@ def analyse_stability():
                label=f'$K_{{\\rm abs}} \\approx {K_abs:.2f}$')
     ax.set_xlabel(r'Perturbation magnitude $\varepsilon$', fontsize=12)
     ax.set_ylabel(r'Lipschitz ratio', fontsize=12)
-    ax.set_title('Stability: Lipschitz ratio vs perturbation size\n'
-                 r'(bounded $\Rightarrow$ stable)', fontsize=12)
+    ax.set_title('Stability: Lipschitz ratio vs perturbation size\n', fontsize=12)
     ax.legend(fontsize=10)
     ax.grid(True, which='both', alpha=0.3)
     ax.spines[['top', 'right']].set_visible(False)
 
     # Annotate convergence to K_abs
-    ax.annotate(f'Converges to $K_{{\\rm abs}}$',
-                xy=(epsilons[-3], sup_ratios[-3]),
-                xytext=(epsilons[-3] * 10, sup_ratios[-3] * 2),
-                arrowprops=dict(arrowstyle='->', color='black'),
-                fontsize=9)
+    # ax.annotate(f'Converges to $K_{{\\rm abs}}$',
+    #             xy=(epsilons[-3], sup_ratios[-3]),
+    #             xytext=(epsilons[-3] * 10, sup_ratios[-3] * 2),
+    #             arrowprops=dict(arrowstyle='->', color='black'),
+    #             fontsize=9)
 
     # --- Plot 2: per-reservoir ratios at smallest epsilon ---
     ax2 = axes[1]
@@ -651,4 +650,4 @@ if __name__ == '__main__':
     verify_mass_conservation(times, results)
     analyse_convergence()
     analyse_consistance()
-    #analyse_stability()
+    analyse_stability()
