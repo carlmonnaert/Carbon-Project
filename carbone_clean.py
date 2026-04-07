@@ -594,11 +594,11 @@ def analyse_stability():
                label=f'$K_{{\\rm abs}} \\approx {K_abs:.2f}$')
     ax.set_xlabel(r'Perturbation magnitude $\varepsilon$', fontsize=12)
     ax.set_ylabel(r'Lipschitz ratio', fontsize=12)
-    ax.set_title('Stability: Lipschitz ratio vs perturbation size\n', fontsize=12)
+    ax.set_title('Stability: Lipschitz ratio vs perturbation size', fontsize=12)
     ax.legend(fontsize=10)
     ax.grid(True, which='both', alpha=0.3)
     ax.spines[['top', 'right']].set_visible(False)
-
+    """
     # Annotate convergence to K_abs
     # ax.annotate(f'Converges to $K_{{\\rm abs}}$',
     #             xy=(epsilons[-3], sup_ratios[-3]),
@@ -637,17 +637,16 @@ def analyse_stability():
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    # -- Scenario comparison --------------------------------------------------
-    plot_scenarios()
-
+    SCENARIO = "BAU"   # reset to default for reference run
     # -- Reference run (RK4, BAU, full horizon) -------------------------------
-    times, results = run_rk4(x0, 1850, 2100, dt=0.1)
+    times, results = run_rk4(x0, 1850, 2600, dt=0.1)
 
     # -- Figures --------------------------------------------------------------
+    # plot_scenarios()
     plot_reservoirs(times, results)
-    compare_with_historical(times, results)
-    plot_temperature_anomaly()
-    verify_mass_conservation(times, results)
-    analyse_convergence()
-    analyse_consistance()
-    analyse_stability()
+    # compare_with_historical(times, results)
+    # plot_temperature_anomaly()
+    # verify_mass_conservation(times, results)
+    # analyse_convergence()
+    # analyse_consistance()
+    #analyse_stability()
