@@ -479,66 +479,156 @@ def verify_mass_conservation(times, results):
 
 def analyse_consistance():
     """
-    Erreur de troncature locale (LTE) :
-    pour chaque dt, on fait UN pas numérique depuis un état x(t*)
-    puis on compare à une référence fine à ce MEME temps t*+dt.
-    On vérifie ainsi LTE ~ O(dt^(p+1)).
+    Vérifie la VRAIE consistance (Définition 4) : 
+    
+    Une méthode φ est consistante si pour toute solution exacte z,
+    la somme des erreurs de consistance tend vers 0 quand h_max → 0:
+    
+        lim_{h→0} sum_{n=0}^{N-1} ||e_n|| = 0
+    
+    où e_n = z(t_{n+1}) - z(t_n) - h·φ(t_n, z(t_n), h)
+
+    - On intègre une solution de référence ultra-fine avec RK4
+    - Pour chaque pas h testé (Euler, Heun, RK4):
+      * On évalue chaque étape ISOLÉE sur la grille [t_n, t_{n+1}]
+      * On compare z(t_{n+1}) (exact) vs z(t_n) + h·φ(t_n, z(t_n), h) (schéma)
+      * On calcule e_n à partir de la VRAIE solution (référence RK4 ultra-fine)
+    - On somme les normes ||e_n|| : Σ||e_n||
+    - Si la méthode est d'ordre p, alors Σ||e_n|| = O(h^p)
     """
-    # On évite les années-charnières (forcing fossile linéaire par morceaux)
-    # afin de mesurer les ordres théoriques en régime lisse.
-    t0 = 1860.3
+    t0, tf = 1850.0, 2015.0
+    
+    # Pas de discrétisation pour chaque niveau
+    dt_ultra_fine = 0.0001  # Solution de référence (très fine)
+    dts_coarse = [0.5, 0.2, 0.1, 0.05, 0.02, 0.01]  # Pas grossiers à tester
 
-    def _advance_rk4(x_init, t_init, dt, n_steps):
-        x = x_init.copy()
-        h = dt / n_steps
-        t = t_init
-        for _ in range(n_steps):
-            x = _rk4_step(x, t, h)
-            t += h
-        return x
+    reservoir_idx = np.arange(7)
+    reservoir_names = ['atm', 'rock', 'deep', 'fossil', 'plant', 'soil', 'surf']
+    scales = np.abs(x0[reservoir_idx])
+    scales[scales == 0] = 1.0  # Éviter division par zéro
 
-    # État de départ x(t0) obtenu avec une intégration RK4 fine depuis 1850.
-    x_t0 = _advance_rk4(x0, 1850.0, t0 - 1850.0, n_steps=20000)
+    # ÉTAPE 1 : Intégrer une solution de référence ultra-fine (considérée comme "exacte")
+    print(f"  Calcul solution de référence (dt={dt_ultra_fine})...")
+    _, z_ultra_fine = run_rk4(x0, t0, tf, dt=dt_ultra_fine)
+    times_ultra_fine = np.arange(t0, tf + dt_ultra_fine, dt_ultra_fine)
 
-    dts = [0.1, 0.05, 0.02, 0.01, 0.005, 0.001]
-
+    # Définir les méthodes d'un pas
     def _euler_step(x, t, h):
+        """Une étape d'Euler : x_{n+1} = x_n + h·f(t_n, x_n)"""
         return x + h * derivative(x, t)
 
     def _heun_step(x, t, h):
+        """Une étape de Heun (RK2) : utilise k1 et k2"""
         k1 = derivative(x, t)
         k2 = derivative(x + h * k1, t + h)
         return x + h / 2 * (k1 + k2)
 
     methods = {
-        'Euler (LTE ordre 2)':  (_euler_step, 2),
-        'Heun (LTE ordre 3)':   (_heun_step, 3),
-        'RK4 (LTE ordre 4)':    (_rk4_step, 4),
+        'Euler': (_euler_step, 1),
+        'Heun': (_heun_step, 2),
+        'RK4': (_rk4_step, 4),
     }
 
-    plt.figure(figsize=(8, 6))
+    method_sum_by_h = {}
+    rk4_component_sums = []
+
+    # ÉTAPE 2 : Pour chaque pas h, mesurer la somme des défauts locaux
     for label, (step_fn, order) in methods.items():
-        errs = []
-        for h in dts:
-            # Référence au même temps final t0+h (très fine, dépend de h)
-            x_ref_h = _advance_rk4(x_t0, t0, h, n_steps=2000)
-            # Un seul pas de la méthode testée depuis x(t0)
-            x_num_h = step_fn(x_t0, t0, h)
-            errs.append(abs(AtmCO2(x_num_h[0]) - AtmCO2(x_ref_h[0])))
+        print(f"  Analyse {label}...")
+        sums_for_h = []
+        component_sums_for_h = []
 
-        plt.loglog(dts, errs, 'o-', label=label, linewidth=2)
-        ref = errs[0] * (np.array(dts)/dts[0])**order
-        plt.loglog(dts, ref, 'k--', alpha=0.4, label=f'Pente {order} (théorique)')
+        for h in dts_coarse:
+            n_steps = int(round((tf - t0) / h))
+            times_h = np.linspace(t0, tf, n_steps + 1)
+            
+            sum_norm_e = 0.0
+            component_sum_abs = np.zeros(len(reservoir_idx))
 
-    plt.xlabel('dt (années)')
-    plt.ylabel('Erreur de troncature locale (ppm)')
-    plt.title('Consistance : erreur locale vs dt')
-    plt.legend()
-    plt.grid(True, which='both', alpha=0.3)
+            for n in range(len(times_h) - 1):
+                tn = times_h[n]
+                tnp1 = times_h[n + 1]
+                h_actual = tnp1 - tn
+
+                idx_n = np.argmin(np.abs(times_ultra_fine - tn))
+                idx_np1 = np.argmin(np.abs(times_ultra_fine - tnp1))
+
+                z_n_exact = z_ultra_fine[idx_n]
+                z_np1_exact = z_ultra_fine[idx_np1]
+                
+                # Applique le schéma UNE FOIS à partir du point exact
+                # z_scheme(t_{n+1}) = z_n_exact + h·φ(t_n, z_n_exact, h)
+                z_np1_scheme = step_fn(z_n_exact, tn, h_actual)
+                
+                # Défaut local : e_n = z(t_{n+1}) - z(t_n) - h·φ(t_n, z(t_n), h)
+                #            = z_exact(t_{n+1}) - z_scheme(t_{n+1})
+                e_n = z_np1_exact - z_np1_scheme
+                
+                # Norme euclidienne relative (normalisée par les valeurs initiales)
+                e_rel = e_n[reservoir_idx] / scales
+                norm_e = np.linalg.norm(e_rel)
+                sum_norm_e += norm_e
+                
+                # Accumulation par réservoir pour RK4
+                component_sum_abs += np.abs(e_rel)
+
+            sums_for_h.append(sum_norm_e)
+            if label == 'RK4':
+                component_sums_for_h.append(component_sum_abs)
+
+        method_sum_by_h[label] = np.array(sums_for_h)
+        if label == 'RK4':
+            rk4_component_sums = component_sums_for_h
+
+    plt.figure(figsize=(11, 7))
+    styles = {'Euler': 'o-', 'Heun': 's-', 'RK4': '^-'}
+    colors = {'Euler': 'C0', 'Heun': 'C1', 'RK4': 'C2'}
+    slope_styles = {1: '--', 2: '-.', 4: ':'}
+    
+    for label, (_, order) in methods.items():
+        vals = method_sum_by_h[label]
+        plt.loglog(dts_coarse, vals, styles[label], color=colors[label], 
+                   linewidth=2.5, markersize=9,
+                   label=f'{label} (order {order}): $\\sum_n \\|e_n\\|$')
+        
+        # Référence : pente théorique O(h^order)
+        if len(vals) > 1:
+            # Prendre le dernier point comme référence
+            h_ref, val_ref = dts_coarse[-1], vals[-1]
+            ref_slope = val_ref * (np.array(dts_coarse) / h_ref) ** order
+            plt.loglog(dts_coarse, ref_slope, slope_styles[order], 
+                      color=colors[label], alpha=0.4, linewidth=1.5)
+
+    plt.xlabel('lenght of h (years)', fontsize=12, fontweight='bold')
+    plt.ylabel(r'$\sum_{n=0}^{N-1}\|e_n\|$', fontsize=12, fontweight='bold')
+    plt.title('Consistency checking\n', 
+              fontsize=13, fontweight='bold')
+    plt.grid(True, which='both', alpha=0.3, linestyle='-', linewidth=0.5)
+    plt.legend(fontsize=10, loc='upper left', framealpha=0.95)
     plt.tight_layout()
-    plt.savefig(get_output_dir('data/plots/comparisons') / 'consistance.png', dpi=300)
+    
+    out = get_output_dir('data/plots/comparisons')
+    plt.savefig(out / 'consistance_definition4.png', dpi=300, bbox_inches='tight')
     plt.show()
-    print("consistance done")
+
+    # ÉTAPE 4 : Graphique 2 - Contribution par réservoir (RK4 uniquement)
+    if rk4_component_sums:
+        rk4_component_sums = np.array(rk4_component_sums)
+        plt.figure(figsize=(11, 7))
+        
+        for j, name in enumerate(reservoir_names):
+            plt.loglog(dts_coarse, rk4_component_sums[:, j], 'o-', 
+                      linewidth=2.2, markersize=7, label=f'{name}')
+        
+        plt.xlabel('Pas de temps h (années)', fontsize=12, fontweight='bold')
+        plt.ylabel(r'$\sum_{n=0}^{N-1}|e_n^{(i)}| / x_0^{(i)}$', fontsize=12, fontweight='bold')
+        plt.title('Consistency checking for all reservoirs\n',
+                 fontsize=13, fontweight='bold')
+        plt.grid(True, which='both', alpha=0.3, linestyle='-', linewidth=0.5)
+        plt.legend(fontsize=9, ncol=2, loc='upper left', framealpha=0.95)
+        plt.tight_layout()
+        plt.savefig(out / 'consistance_by_reservoir.png', dpi=300, bbox_inches='tight')
+        plt.show()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -686,6 +776,6 @@ if __name__ == '__main__':
     # compare_with_historical(times, results)
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
-    analyse_convergence()
-    #analyse_consistance()
+    #analyse_convergence()
+    analyse_consistance()
     #analyse_stability()
