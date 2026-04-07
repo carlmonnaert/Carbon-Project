@@ -217,7 +217,7 @@ def _make_times(t0, tf, dt):
     return np.linspace(t0, tf, n_steps + 1)
 
 def analyse_convergence():
-    t0, tf = 1850, 1874 
+    t0, tf = 1850, 2015 
     dt_ref = 0.0005
     
     # z(t) : Trajectoire de référence complète
@@ -263,8 +263,9 @@ def analyse_convergence():
                    alpha=0.4, linewidth=1.5, label=f'Slope {order} (theoretical)')
 
     plt.xlabel('Time step dt (years)', fontsize=12)
-    plt.ylabel(r'Global error $\max_{n} \left\| (y_n - z(t_n)) / x_0 \right\|_2$', fontsize=12)
-    plt.title('Convergence Analysis: Error vs. Time Step (1850-1874)', fontsize=14, fontweight='bold')
+    plt.ylabel(r'Global error $\max_{0 \leq n \leq N} \left\| (y_n - z(t_n)) / x_0 \right\|_\infty$', fontsize=12)
+    
+    plt.title('Convergence Analysis: Error vs. Time Step (1850-2015)', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10, loc='lower right') 
     plt.grid(alpha=0.3, which='both')
     plt.tight_layout()
