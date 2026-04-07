@@ -520,117 +520,123 @@ def analyse_consistance():
 
 def analyse_stability():
     """
-    Stability analysis following the course definition (Def 1.1.3):
-    a problem is stable if its resolvent is locally Lipschitz continuous.
-    
-    We take d = x0 (initial conditions) and measure how the atmospheric CO2
-    at tf=2015 responds to perturbations h of x0, estimating:
-        ratio(eps) = ||x(d+h) - x(d)|| / ||h||
-    
-    If this ratio remains bounded as eps -> 0, the problem is stable (Prop 1.1.4).
-    K_abs = lim_{eps->0} sup_{||h||<eps} ||x(d+h)-x(d)|| / ||h||
+    Vérifie numériquement la définition 5 de stabilité.
+
+    Pour le schéma choisi, on construit des suites y_n et y~_n telles que
+
+        y_{n+1} = y_n + h_n * phi(t_n, y_n, h_n)
+        y~_{n+1} = y~_n + h_n * phi(t_n, y~_n, h_n) + eps_n
+
+    puis on estime, pour chaque horizon N,
+
+        S_N = max_{0<=n<=N} ||y~_n-y_n||
+              -----------------------------------------------
+              ||y~_0-y_0|| + sum_{k=0}^{N-1} ||eps_k||.
+
+    Si les S_N restent bornés lorsque N augmente, cela soutient la stabilité
+    du schéma au sens de la définition 5.
     """
     t0, tf, dt = 1850, 2015, 0.1
+    times = _make_times(t0, tf, dt)
+    n_steps = len(times) - 1
+    n_trials = 80
+    method_name = 'RK4'
 
-    # Reference solution (unperturbed)
-    _, res_ref = run_rk4(x0, t0, tf, dt)
-    co2_ref = AtmCO2(res_ref[-1, 0])
-    x_ref_final = res_ref[-1]
+    delta0_size = 1e-6
+    noise_size = 1e-8
 
-    epsilons = np.logspace(-1, -10, 20)
-    n_dirs = 20  # number of random perturbation directions per epsilon
+    rng = np.random.default_rng(42)
 
-    # We test perturbations on each reservoir independently + random directions
-    reservoir_names = ['Atmosphere', 'CarbonateRock', 'DeepOcean', 'FossilFuel',
-                       'Plants', 'Soils', 'SurfaceOcean', 'VegLandArea']
+    def step_method(y, t, h):
+        return _rk4_step(y, t, h)
 
-    np.random.seed(42)
+    def run_pair(delta0, epsilons):
+        y = np.zeros((n_steps + 1, len(x0)))
+        y_pert = np.zeros((n_steps + 1, len(x0)))
+        y[0] = x0
+        y_pert[0] = x0 + delta0
 
-    # --- Per-reservoir ratios (one direction: unit vector e_i) ---
-    ratios_per_reservoir = np.zeros((len(reservoir_names), len(epsilons)))
+        for n in range(n_steps):
+            tn = times[n]
+            y[n + 1] = step_method(y[n], tn, dt)
+            y_pert[n + 1] = step_method(y_pert[n], tn, dt) + epsilons[n]
 
-    for i in range(len(x0)):
-        for j, eps in enumerate(epsilons):
-            h = np.zeros(len(x0))
-            h[i] = eps
-            x_pert = x0 + h
-            _, res_pert = run_rk4(x_pert, t0, tf, dt)
-            diff = np.linalg.norm(res_pert[-1] - x_ref_final)
-            ratios_per_reservoir[i, j] = diff / np.linalg.norm(h)
+        return y, y_pert
 
-    # --- Random directions: estimate sup over random unit vectors ---
-    sup_ratios = np.zeros(len(epsilons))
-    for j, eps in enumerate(epsilons):
-        max_ratio = 0.0
-        for _ in range(n_dirs):
-            delta = np.random.randn(len(x0))
-            delta /= np.linalg.norm(delta)
-            h = eps * delta
-            x_pert = x0 + h
-            _, res_pert = run_rk4(x_pert, t0, tf, dt)
-            diff = np.linalg.norm(res_pert[-1] - x_ref_final)
-            ratio = diff / np.linalg.norm(h)
-            if ratio > max_ratio:
-                max_ratio = ratio
-        sup_ratios[j] = max_ratio
+    S_by_N = np.zeros(n_steps + 1)
+    representative_diff = None
+    representative_bound = None
+    representative_ratio = -np.inf
 
-    # K_abs estimated as the value of sup_ratio at the smallest epsilon
-    K_abs = sup_ratios[-1]
-    K_rel = K_abs * np.linalg.norm(x0) / np.linalg.norm(x_ref_final)
+    for _ in range(n_trials):
+        delta0 = rng.normal(size=len(x0))
+        delta0 /= np.linalg.norm(delta0)
+        delta0 *= delta0_size
 
-    print(f"\nStability Analysis Results:")
-    print(f"  K_abs (absolute condition number) ≈ {K_abs:.4f}")
-    print(f"  K_rel (relative condition number) ≈ {K_rel:.4f}")
-    print(f"  -> Bounded ratios confirm stability in the sense of Def 1.1.3")
+        epsilons = rng.normal(size=(n_steps, len(x0)))
+        epsilons /= np.linalg.norm(epsilons, axis=1, keepdims=True)
+        epsilons *= noise_size
 
-    # ── Plotting ──────────────────────────────────────────────────────────────
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), constrained_layout=True)
+        y, y_pert = run_pair(delta0, epsilons)
 
-    # --- Plot 1: sup ratio over random directions (main stability criterion) ---
-    ax = axes[0]
-    ax.loglog(epsilons, sup_ratios, 'o-', color='tab:blue',
-              linewidth=2, markersize=7, label=r'$\sup_{\|h\|<\varepsilon} \|x(d+h)-x(d)\| / \|h\|$')
-    ax.axhline(K_abs, color='tab:red', linestyle='--', linewidth=1.5,
-               label=f'$K_{{\\rm abs}} \\approx {K_abs:.2f}$')
-    ax.set_xlabel(r'Perturbation magnitude $\varepsilon$', fontsize=12)
-    ax.set_ylabel(r'Lipschitz ratio', fontsize=12)
-    ax.set_title('Stability: Lipschitz ratio vs perturbation size', fontsize=12)
-    ax.legend(fontsize=10)
-    ax.grid(True, which='both', alpha=0.3)
-    ax.spines[['top', 'right']].set_visible(False)
-    
-    # Annotate convergence to K_abs
-    # ax.annotate(f'Converges to $K_{{\\rm abs}}$',
-    #             xy=(epsilons[-3], sup_ratios[-3]),
-    #             xytext=(epsilons[-3] * 10, sup_ratios[-3] * 2),
-    #             arrowprops=dict(arrowstyle='->', color='black'),
-    #             fontsize=9)
+        diff_norms = np.linalg.norm(y_pert - y, axis=1)
+        epsilon_norms = np.linalg.norm(epsilons, axis=1)
+        denominator = np.linalg.norm(delta0) + np.concatenate(([0.0], np.cumsum(epsilon_norms)))
+        running_max_error = np.maximum.accumulate(diff_norms)
+        ratios = np.divide(running_max_error, denominator,
+                           out=np.zeros_like(running_max_error),
+                           where=denominator > 0)
 
-    # --- Plot 2: per-reservoir ratios at smallest epsilon ---
+        S_by_N = np.maximum(S_by_N, ratios)
+
+        trial_peak_ratio = np.max(ratios)
+        if trial_peak_ratio > representative_ratio:
+            representative_ratio = trial_peak_ratio
+            representative_diff = diff_norms.copy()
+            representative_bound = denominator.copy()
+
+    stability_constant = np.max(S_by_N)
+    representative_bound *= stability_constant
+
+    print(f"\nStability Analysis Results ({method_name}, definition 5):")
+    print(f"  dt = {dt}")
+    print(f"  N_max = {n_steps}")
+    print(f"  S_Nmax ≈ {S_by_N[-1]:.4f}")
+    print(f"  Estimated stability constant S ≈ {stability_constant:.4f}")
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6), constrained_layout=True)
+
+    ax1 = axes[0]
+    N_values = np.arange(n_steps + 1)
+    ax1.plot(N_values, S_by_N, color='tab:blue', linewidth=2.5)
+    ax1.axhline(stability_constant, color='tab:red', linestyle='--', linewidth=1.5,
+                label=rf'$S \approx {stability_constant:.2f}$')
+    ax1.set_xlabel('Number of steps $N$', fontsize=12)
+    ax1.set_ylabel(r'Estimated ratio $S_N$', fontsize=12)
+    ax1.set_title(f'{method_name}: verification of definition 5', fontsize=12)
+    ax1.grid(alpha=0.3)
+    ax1.legend(fontsize=10)
+    ax1.spines[['top', 'right']].set_visible(False)
+
     ax2 = axes[1]
-    ratios_at_small_eps = ratios_per_reservoir[:, -1]
-    colors = plt.cm.tab10(np.linspace(0, 1, len(reservoir_names)))
-    bars = ax2.bar(reservoir_names, ratios_at_small_eps, color=colors, edgecolor='white')
-    ax2.set_xlabel('Reservoir perturbed', fontsize=12)
-    ax2.set_ylabel(r'$\|x(d+h)-x(d)\| / \|h\|$ at $\varepsilon=10^{-8}$', fontsize=11)
-    ax2.set_title(r'Per-reservoir condition number ($K_{\rm abs}$ estimate)', fontsize=12)
-    ax2.tick_params(axis='x', rotation=30)
-    ax2.grid(axis='y', alpha=0.3)
+    ax2.plot(times, representative_diff, color='tab:orange', linewidth=2.2,
+             label=r'$\|\tilde y_n-y_n\|$')
+    ax2.plot(times, representative_bound, color='tab:green', linestyle='--', linewidth=1.8,
+             label=r'$S(\|\tilde y_0-y_0\|+\sum_{k=0}^{N-1}\|\varepsilon_k\|)$')
+    ax2.set_xlabel('Time', fontsize=12)
+    ax2.set_ylabel(r'$\|\tilde y_n-y_n\|$', fontsize=12)
+    ax2.set_title(f'{method_name}: bound from definition 5', fontsize=12)
+    ax2.grid(alpha=0.3)
+    ax2.legend(fontsize=10)
     ax2.spines[['top', 'right']].set_visible(False)
 
-    # Add value labels on bars
-    for bar, val in zip(bars, ratios_at_small_eps):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.02,
-                 f'{val:.2f}', ha='center', va='bottom', fontsize=8)
-
-    fig.suptitle('Stability Analysis — Lipschitz Condition',
-                 fontsize=14, fontweight='bold')
+    fig.suptitle('Stability Analysis — Definition 5', fontsize=14, fontweight='bold')
 
     out = get_output_dir('data/plots/comparisons')
     plt.savefig(out / 'stabilite_vp.png', dpi=300)
     plt.show()
 
-    return K_abs, K_rel
+    return S_by_N[-1], stability_constant
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
@@ -643,10 +649,10 @@ if __name__ == '__main__':
 
     # -- Figures --------------------------------------------------------------
     # plot_scenarios()
-    plot_reservoirs(times, results)
+    #plot_reservoirs(times, results)
     # compare_with_historical(times, results)
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
     # analyse_convergence()
     # analyse_consistance()
-    #analyse_stability()
+    analyse_stability()
