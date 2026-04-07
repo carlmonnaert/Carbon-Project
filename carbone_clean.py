@@ -547,28 +547,29 @@ def analyse_stability():
     """
     Vérifie numériquement la définition 5 de stabilité.
 
-    Pour le schéma choisi, on construit des suites y_n et y~_n telles que
+    Pour chaque horizon N, on calcule
 
-        y_{n+1} = y_n + h_n * phi(t_n, y_n, h_n)
-        y~_{n+1} = y~_n + h_n * phi(t_n, y~_n, h_n) + eps_n
-
-    puis on estime, pour chaque horizon N,
-
-        S_N = max_{0<=n<=N} ||y~_n-y_n||
+        R_N = max_{0<=j<=N} ||y~_j-y_j||
               -----------------------------------------------
-              ||y~_0-y_0|| + sum_{k=0}^{N-1} ||eps_k||.
+              ||y~_0-y_0|| + sum_{k=0}^{N-1} ||eps_k||
 
-    Si les S_N restent bornés lorsque N augmente, cela soutient la stabilité
-    du schéma au sens de la définition 5.
+    puis on estime une constante S indépendante de N par
+
+        S_est = max_N R_N
+
+    sur un ensemble de trajectoires perturbées.
     """
     t0, tf, dt = 1850, 2015, 0.1
     times = _make_times(t0, tf, dt)
     n_steps = len(times) - 1
     n_trials = 80
     method_name = 'RK4'
+    state_dim = len(x0)
 
     delta0_size = 1e-6
-    noise_size = 1e-8
+    target_eps_norm = 1e-8
+    eps_std = target_eps_norm / np.sqrt(state_dim)
+    eps_variance = eps_std ** 2
 
     rng = np.random.default_rng(42)
 
@@ -588,69 +589,74 @@ def analyse_stability():
 
         return y, y_pert
 
-    S_by_N = np.zeros(n_steps + 1)
-    representative_diff = None
-    representative_bound = None
+    ratio_by_N = np.zeros(n_steps + 1)
+    representative_lhs = None
+    representative_rhs_base = None
     representative_ratio = -np.inf
+    representative_delta0_norm = None
 
     for _ in range(n_trials):
-        delta0 = rng.normal(size=len(x0))
+        delta0 = rng.normal(size=state_dim)
         delta0 /= np.linalg.norm(delta0)
         delta0 *= delta0_size
 
-        epsilons = rng.normal(size=(n_steps, len(x0)))
-        epsilons /= np.linalg.norm(epsilons, axis=1, keepdims=True)
-        epsilons *= noise_size
+        # i.i.d. Gaussian perturbations: epsilon_n ~ N(0, sigma^2 I)
+        epsilons = rng.normal(loc=0.0, scale=eps_std, size=(n_steps, state_dim))
 
         y, y_pert = run_pair(delta0, epsilons)
 
         diff_norms = np.linalg.norm(y_pert - y, axis=1)
+        lhs_N = np.maximum.accumulate(diff_norms)
         epsilon_norms = np.linalg.norm(epsilons, axis=1)
-        denominator = np.linalg.norm(delta0) + np.concatenate(([0.0], np.cumsum(epsilon_norms)))
-        running_max_error = np.maximum.accumulate(diff_norms)
-        ratios = np.divide(running_max_error, denominator,
-                           out=np.zeros_like(running_max_error),
-                           where=denominator > 0)
+        delta0_norm = np.linalg.norm(delta0)
+        rhs_base_N = delta0_norm + np.concatenate(([0.0], np.cumsum(epsilon_norms)))
+        ratios = np.divide(lhs_N, rhs_base_N,
+                           out=np.zeros_like(lhs_N),
+                           where=rhs_base_N > 0)
 
-        S_by_N = np.maximum(S_by_N, ratios)
+        ratio_by_N = np.maximum(ratio_by_N, ratios)
 
         trial_peak_ratio = np.max(ratios)
         if trial_peak_ratio > representative_ratio:
             representative_ratio = trial_peak_ratio
-            representative_diff = diff_norms.copy()
-            representative_bound = denominator.copy()
+            representative_lhs = lhs_N.copy()
+            representative_rhs_base = rhs_base_N.copy()
+            representative_delta0_norm = delta0_norm
 
-    stability_constant = np.max(S_by_N)
-    representative_bound *= stability_constant
+    stability_constant = np.max(ratio_by_N)
+    representative_rhs = stability_constant * representative_rhs_base
 
     print(f"\nStability Analysis Results ({method_name}, definition 5):")
     print(f"  dt = {dt}")
     print(f"  N_max = {n_steps}")
-    print(f"  S_Nmax ≈ {S_by_N[-1]:.4f}")
+    print(f"  epsilon_n ~ N(0, sigma^2 I), sigma = {eps_std:.3e}")
+    print(f"  epsilon variance per component sigma^2 = {eps_variance:.3e}")
+    print(f"  R_Nmax ≈ {ratio_by_N[-1]:.4f}")
+    print(f"  ||y~_0 - y_0|| (representative) ≈ {representative_delta0_norm:.3e}")
     print(f"  Estimated stability constant S ≈ {stability_constant:.4f}")
 
     fig, axes = plt.subplots(1, 2, figsize=(15, 6), constrained_layout=True)
 
     ax1 = axes[0]
     N_values = np.arange(n_steps + 1)
-    ax1.plot(N_values, S_by_N, color='tab:blue', linewidth=2.5)
+    ax1.plot(N_values, ratio_by_N, color='tab:blue', linewidth=2.5)
     ax1.axhline(stability_constant, color='tab:red', linestyle='--', linewidth=1.5,
                 label=rf'$S \approx {stability_constant:.2f}$')
     ax1.set_xlabel('Number of steps $N$', fontsize=12)
-    ax1.set_ylabel(r'Estimated ratio $S_N$', fontsize=12)
+    ax1.set_ylabel(r'Worst-case ratio $R_N$', fontsize=12)
     ax1.set_title(f'{method_name}: verification of definition 5', fontsize=12)
     ax1.grid(alpha=0.3)
     ax1.legend(fontsize=10)
     ax1.spines[['top', 'right']].set_visible(False)
 
     ax2 = axes[1]
-    ax2.plot(times, representative_diff, color='tab:orange', linewidth=2.2,
-             label=r'$\|\tilde y_n-y_n\|$')
-    ax2.plot(times, representative_bound, color='tab:green', linestyle='--', linewidth=1.8,
+    ax2.plot(N_values, representative_lhs, color='tab:orange', linewidth=2.2,
+             label=r'$\max_{0\leq j\leq N}\|\tilde y_j-y_j\|$')
+    ax2.plot(N_values, representative_rhs, color='tab:green', linestyle='--', linewidth=1.8,
              label=r'$S(\|\tilde y_0-y_0\|+\sum_{k=0}^{N-1}\|\varepsilon_k\|)$')
-    ax2.set_xlabel('Time', fontsize=12)
-    ax2.set_ylabel(r'$\|\tilde y_n-y_n\|$', fontsize=12)
-    ax2.set_title(f'{method_name}: bound from definition 5', fontsize=12)
+    ax2.set_xlabel('Number of steps $N$', fontsize=12)
+    ax2.set_ylabel('Inequality terms', fontsize=12)
+    ax2.set_title(f'{method_name}: left-hand side vs stability bound', fontsize=12)
     ax2.grid(alpha=0.3)
     ax2.legend(fontsize=10)
     ax2.spines[['top', 'right']].set_visible(False)
@@ -661,7 +667,7 @@ def analyse_stability():
     plt.savefig(out / 'stabilite_vp.png', dpi=300)
     plt.show()
 
-    return S_by_N[-1], stability_constant
+    return ratio_by_N[-1], stability_constant
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
@@ -678,6 +684,6 @@ if __name__ == '__main__':
     # compare_with_historical(times, results)
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
-    analyse_convergence()
+    #analyse_convergence()
     # analyse_consistance()
-    #analyse_stability()
+    analyse_stability()
