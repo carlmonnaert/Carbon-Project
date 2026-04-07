@@ -263,7 +263,8 @@ def analyse_convergence():
                    alpha=0.4, linewidth=1.5, label=f'Slope {order} (theoretical)')
 
     plt.xlabel('Time step dt (years)', fontsize=12)
-    plt.ylabel(r'Global error $\max_{0 \leq n \leq N} \left\| (y_n - z(t_n)) / x_0 \right\|_\infty$', fontsize=12)
+    plt.ylabel(r'Global error $\max_{0 \leq n \leq N} \left\| (y_n - z(t_n)) / z(t_0) \right\|_2$', fontsize=12)
+    
     
     plt.title('Convergence Analysis: Error vs. Time Step (1850-2015)', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10, loc='lower right') 
@@ -685,6 +686,6 @@ if __name__ == '__main__':
     # compare_with_historical(times, results)
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
-    #analyse_convergence()
-    # analyse_consistance()
-    analyse_stability()
+    analyse_convergence()
+    #analyse_consistance()
+    #analyse_stability()
