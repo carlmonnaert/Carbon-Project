@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from scipy.integrate import solve_ivp
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -211,6 +212,10 @@ def run_am3(x0, t0, tf, dt):
 # ══════════════════════════════════════════════════════════════════════════════
 # CONVERGENCE ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
+def _times_grid(t0, tf, dt):
+    n_steps = int(round((tf - t0) / dt))
+    return np.linspace(t0, tf, n_steps + 1)
+
 
 def _make_times(t0, tf, dt):
     n_steps = int(round((tf - t0) / dt))
@@ -273,6 +278,76 @@ def analyse_convergence():
     plt.savefig(get_output_dir('data/plots/comparisons') / 'convergence_analysis_strict.png', dpi=300)
     plt.show()
 
+
+
+
+def _solve_ivp_reference(t0, tf, t_eval, *, method="DOP853", rtol=1e-13, atol=1e-13):
+    def f(t, y):
+        return derivative(y, t)
+    sol = solve_ivp(
+        f, (t0, tf), x0,
+        method=method,
+        t_eval=t_eval,
+        rtol=rtol, atol=atol,
+        vectorized=False,
+    )
+    if not sol.success:
+        raise RuntimeError(f"solve_ivp failed: {sol.message}")
+    return sol.t, sol.y.T  # (N, dim)
+
+def analyse_convergence_scipy():
+    t0, tf = 1850.0, 2015.0
+    dts = [0.5, 0.2, 0.1, 0.05, 0.02, 0.01]
+
+    scales = np.abs(x0).copy()
+    scales[scales == 0] = 1.0
+
+    methods = {
+        "Euler (order 1)": (run_euler, "o-", 1),
+        "Heun (order 2)":  (run_heun,  "^-", 2),
+        "RK4 (order 4)":   (run_rk4,   "s-", 4),
+    }
+
+    plt.figure(figsize=(8, 6))
+
+    for label, (runner, style, order) in methods.items():
+        errs = []
+        for h in dts:
+            t_coarse = _times_grid(t0, tf, h)
+
+            # Référence "intégration SciPy" évaluée exactement aux mêmes instants
+            _, ref = _solve_ivp_reference(
+                t0, tf, t_eval=t_coarse,
+                method="DOP853",   # bon pour référence non-raide
+                rtol=1e-11, atol=1e-13
+            )
+
+            # Solution numérique avec pas h
+            _, res = runner(x0, t0, tf, h)
+
+            n = min(len(res), len(ref))
+            diff = (res[:n] - ref[:n]) / scales
+            normes = np.linalg.norm(diff, axis=1)
+            errs.append(np.max(normes))
+
+        plt.loglog(dts, errs, style, label=label, linewidth=2, markersize=8)
+
+        # pente théorique
+        ref_slope = errs[0] * (np.array(dts) / dts[0]) ** order
+        plt.loglog(
+            dts, ref_slope,
+            "k--" if order == 1 else ("k-." if order == 2 else "k:"),
+            alpha=0.4, linewidth=1.5,
+            label=f"Slope {order} (theoretical)"
+        )
+
+    plt.xlabel("Time step dt (years)")
+    plt.ylabel(r"Global error $\max_n \| (y_n - y_{ref}(t_n))/x_0 \|_2$")
+    plt.title("Convergence vs dt (reference = solve_ivp DOP853)")
+    plt.legend(fontsize=9, loc="lower right")
+    plt.grid(alpha=0.3, which="both")
+    plt.tight_layout()
+    plt.show()
 # ══════════════════════════════════════════════════════════════════════════════
 # FIGURES
 # ══════════════════════════════════════════════════════════════════════════════
@@ -777,5 +852,6 @@ if __name__ == '__main__':
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
     #analyse_convergence()
-    analyse_consistance()
+    #analyse_consistance()
     #analyse_stability()
+    analyse_convergence_scipy()
