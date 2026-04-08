@@ -852,6 +852,6 @@ if __name__ == '__main__':
     # plot_temperature_anomaly()
     # verify_mass_conservation(times, results)
     #analyse_convergence()
-    #analyse_consistance()
+    analyse_consistance()
     #analyse_stability()
-    analyse_convergence_scipy()
+    #analyse_convergence_scipy()
